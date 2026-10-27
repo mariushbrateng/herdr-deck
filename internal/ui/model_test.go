@@ -85,7 +85,7 @@ func run(m Model, cmd tea.Cmd) Model {
 		for _, c := range msg {
 			m = run(m, c)
 		}
-	case openedMsg, devUpMsg, diffMsg, patchMsg, commitsMsg, commitFilesMsg, checkLogMsg, archMsg, edgeViewMsg:
+	case openedMsg, devUpMsg, diffMsg, patchMsg, commitsMsg, commitFilesMsg, checkLogMsg, archMsg, edgeViewMsg, issueSetMsg:
 		next, _ := m.Update(msg)
 		m = next.(Model)
 	case settingsMsg, settingsSavedMsg:

@@ -1,0 +1,40 @@
+ Linear (7) GitHub (6) Review (2)   ● 4  ◐ 1  ◇ 1  ○ 3  ✉ 0
+────────────────────────────────────────────────────────────
+    PR                                          R C M  LINKS
+  acme/webshop
+ ▸● #2412 Restrict org admin to own org in st…  ✓ ✓ ✓  G L
+  ◐ #2420 Guard på migrations (ENG-791)         ◌ ◐ ◌  G L
+  ● #2398 Stop losing chunks on reconnect       ✕ ✕ ◌  G
+  ● #2377 Seed data for local development       ◌ ✓ ✕  G
+
+  acme/deploy
+  ◇ #88 draft Deploy the worker to eu-north     – – ◇  G
+  ◐ #85 Pin the base image                      ✓ ✓ ↓  G
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────
+ Restrict org admin to own o… ✓ approved  ✓ passed  ✓ ready
+ acme/webshop · #2412 · you · updated 20m ago
+
+   PR
+
+ [2 #2412]
+ reading the description and comments…
+
+ ── Status ──
+ open · approved
+ ✓ ready to merge
+ ✓ checks passed · reading them…
+ checked just now
+
+
+
+
+────────────────────────────────────────────────────────────
+ ↵ g open  ←→ tabs  V tasks                           v9.9.9

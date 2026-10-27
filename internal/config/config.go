@@ -44,6 +44,7 @@ const (
 	EnvLinearStatus        = "HERDR_DECK_LINEAR_STATUS"
 	EnvLinearAPIKeyCommand = "HERDR_DECK_LINEAR_API_KEY_COMMAND"
 	EnvGitHubEnabled       = "HERDR_DECK_GITHUB_ENABLED"
+	EnvGitHubRepos         = "HERDR_DECK_GITHUB_REPOS"
 	EnvFigmaDesktop        = "HERDR_DECK_FIGMA_DESKTOP"
 	EnvReuseTabs           = "HERDR_DECK_BROWSER_REUSE_TABS"
 	EnvUpdateCheck         = "HERDR_DECK_UPDATES_CHECK"
@@ -172,6 +173,9 @@ type Linear struct {
 type GitHub struct {
 	// Enabled turns the deck's own PR reads through gh on or off.
 	Enabled *bool `toml:"enabled"`
+	// Repos are the repos, "owner/name", the GitHub and Review views
+	// list open PRs from; [] lists them from every repo.
+	Repos *[]string `toml:"repos"`
 }
 
 // Figma is the [figma] table.
@@ -361,6 +365,7 @@ func (f *File) decoders(md toml.MetaData) map[string]func(toml.Primitive) error 
 		KeyLinearStatus:        into(md, &f.Linear, func(t *Linear) **bool { return &t.Status }),
 		KeyLinearAPIKeyCommand: into(md, &f.Linear, func(t *Linear) **string { return &t.APIKeyCommand }),
 		KeyGitHubEnabled:       into(md, &f.GitHub, func(t *GitHub) **bool { return &t.Enabled }),
+		KeyGitHubRepos:         into(md, &f.GitHub, func(t *GitHub) **[]string { return &t.Repos }),
 		KeyFigmaDesktop:        into(md, &f.Figma, func(t *Figma) **bool { return &t.Desktop }),
 		KeyReuseTabs:           into(md, &f.Browser, func(t *Browser) **bool { return &t.ReuseTabs }),
 		KeyUpdateCheck:         into(md, &f.Updates, func(t *Updates) **bool { return &t.Check }),
@@ -485,6 +490,9 @@ type Settings struct {
 	// GitHubEnabled has the deck read thread PRs from GitHub through gh
 	// (internal/source/github), beyond herdr-projects' ticker.
 	GitHubEnabled bool
+	// GitHubRepos are the repos, "owner/name", the GitHub and Review
+	// views list open PRs from; empty lists them from every repo.
+	GitHubRepos []string
 	// FoldedLists are the headings of the lists that start folded, matched
 	// without regard to case. It is never nil; empty folds none.
 	FoldedLists []string
@@ -673,6 +681,29 @@ func Resolve(fl Flags, getenv func(string) string, lookPath func(string) (string
 		}
 		return f.GitHub.Enabled
 	}, true); err != nil {
+		return s, err
+	}
+	if s.GitHubRepos, err = resolve(r, KeyGitHubRepos, reader[[]string]{
+		parse: func(t string) ([]string, string, error) {
+			l, err := parseRepos(t)
+			return l, ListText(l), err
+		},
+		file: func() ([]string, string, bool) {
+			if f.GitHub == nil || f.GitHub.Repos == nil {
+				return nil, "", false
+			}
+			l, err := cleanList(*f.GitHub.Repos)
+			if err == nil {
+				err = checkRepos(l)
+			}
+			if err != nil {
+				r.problem(KeyGitHubRepos, err.Error()+"; ignored")
+				return nil, "", false
+			}
+			return l, ListText(l), true
+		},
+		def: func() ([]string, string) { return []string{}, NoLists },
+	}); err != nil {
 		return s, err
 	}
 	if s.FigmaDesktop, err = resolveBool(r, KeyFigmaDesktop, func(f File) *bool {
@@ -1031,6 +1062,26 @@ func listFitsText(l []string) bool {
 		}
 	}
 	return true
+}
+
+// parseRepos reads github.repos as ParseList does, each name an
+// "owner/name".
+func parseRepos(text string) ([]string, error) {
+	l, err := ParseList(text)
+	if err == nil {
+		err = checkRepos(l)
+	}
+	return l, err
+}
+
+// checkRepos says which name is not a repo's "owner/name".
+func checkRepos(l []string) error {
+	for _, n := range l {
+		if !deck.ValidRepo(n) {
+			return fmt.Errorf("%q is not a repo such as owner/name", n)
+		}
+	}
+	return nil
 }
 
 // ListText is a list as ParseList reads it.

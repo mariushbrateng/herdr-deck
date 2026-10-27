@@ -2,7 +2,12 @@
 // internal/source produce a Snapshot; internal/ui only renders it.
 package deck
 
-import "time"
+import (
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+)
 
 // Snapshot is everything the deck knows about one project at one moment.
 type Snapshot struct {
@@ -32,6 +37,12 @@ type Snapshot struct {
 	// gives the links their URLs (or its first answer is pending), so no
 	// linear.workspace is needed.
 	LinearKey bool
+	// Mine is the open Linear issues assigned to the key's user, for the
+	// Linear view; nil when Linear status is off.
+	Mine *Mine
+	// PRs is gh's user's open pull requests, for the GitHub and Review
+	// views; nil when the deck does not read GitHub.
+	PRs *MyPRs
 }
 
 // ProjectInfo is one project under the projects root as the project picker
@@ -170,6 +181,156 @@ type Thread struct {
 	// Log is the thread's timeline, newest first: the thread file's
 	// timestamps and the inbox items about it, handled or not.
 	Log []LogEvent
+
+	// Board is set when the thread is a herdr-projects 1.x task: what the
+	// board says of it beyond a 0.2 thread (internal/source/board).
+	Board *BoardTask
+}
+
+// BoardTask is a herdr-projects 1.x task as the board shows it. The deck
+// reads it from `herdr-projects list --json` and `details`, and from the
+// task's folder for what the CLI leaves out.
+type BoardTask struct {
+	// ID is the board's id, "webapp/7"; the thread's ID is its key,
+	// "WEB-7". Repo is the repo's name, "webapp".
+	ID   string
+	Repo string
+	// Stage is the board's stage token (todo, queued, working, plan,
+	// reviewing, approval, merging, done, failed, …) and State its agent
+	// state (idle, working, blocked, done, error).
+	Stage string
+	State string
+	// Phase is the stage in the deck's own words and colours.
+	Phase Phase
+	// Msg is what the agent said last, or what the task waits for.
+	Msg string
+	// Progress is the agent's own estimate, 0–100, and ETA the minutes it
+	// thinks are left; nil when it gave none.
+	Progress *int
+	ETA      *int
+	// Priority is the deck's own priority for the task, 1–4; 0 is none.
+	Priority int
+	Research bool
+	Chat     bool
+	// Queue is the task's place in the queue for a free slot, or 0.
+	Queue int
+	App   string // the agent program, e.g. "claude"
+	Model string
+	// Review is the current review's verdict; nil before one.
+	Review *BoardReview
+	// Elapsed is the time the board counts against the task's limits,
+	// and Tokens the tokens; zero when it counted none.
+	Elapsed time.Duration
+	Tokens  int
+	// Context is the agent's context use in tokens, from task.json.
+	Context int
+	// ReportURL is the report or review page the board serves for the
+	// task, and ReportFile its file on disk; empty when there is none.
+	ReportURL  string
+	ReportFile string
+	// ReviewURL is the review's page, when the board serves one.
+	ReviewURL string
+	// Critical says why the change is critical, one short reason each:
+	// a review gate, a path such as migrations/ or a critical area of
+	// the repo's AGENTS.md or INVARIANTS.md. Empty when it is not.
+	Critical []string
+	// Frontend is the folder in the worktree whose frontend the change
+	// touches, relative to it ("frontend", "." …); "" when none.
+	Frontend string
+	// Description is the task's own description.
+	Description string
+}
+
+// Phase is a board task's stage as the deck colours it.
+type Phase int
+
+const (
+	PhaseTodo     Phase = iota // to do: nobody on it yet
+	PhaseQueued                // waits for a slot or another task
+	PhaseWorking               // an agent works
+	PhasePlan                  // a plan waits for the user's yes
+	PhaseAsks                  // the agent asks the user something
+	PhaseReview                // the reviewer works
+	PhaseChecking              // the board runs the repo's check
+	PhaseApprove               // finished, waits for the user's approval
+	PhaseMerging               // being merged
+	PhaseFailed                // failed or stopped
+	PhaseDone                  // done, nothing merged
+	PhaseMerged                // done and merged
+)
+
+// String is the phase in a word or two, as the STATUS column shows it.
+func (p Phase) String() string {
+	switch p {
+	case PhaseQueued:
+		return "queued"
+	case PhaseWorking:
+		return "working"
+	case PhasePlan:
+		return "plan ready"
+	case PhaseAsks:
+		return "asks you"
+	case PhaseReview:
+		return "in review"
+	case PhaseChecking:
+		return "checking"
+	case PhaseApprove:
+		return "ready to approve"
+	case PhaseMerging:
+		return "merging"
+	case PhaseFailed:
+		return "failed"
+	case PhaseDone:
+		return "done"
+	case PhaseMerged:
+		return "merged"
+	}
+	return "to do"
+}
+
+// BoardReview is a board review's verdict.
+type BoardReview struct {
+	Pass bool
+	// Gate is the review tier the board gave the change, e.g. "major".
+	Gate     string
+	Text     string
+	Findings []Finding
+	// Round counts the review rounds so far.
+	Round int
+}
+
+// Finding is one review finding.
+type Finding struct {
+	ID       string
+	Severity string // critical, major, minor, trivial
+	Subject  string
+	Where    string
+}
+
+// Tally is the findings counted by severity, worst first, as the board
+// writes it: "1 critical, 2 minor"; "" with none.
+func (r BoardReview) Tally() string {
+	order := []string{"critical", "major", "minor", "trivial"}
+	n := map[string]int{}
+	for _, f := range r.Findings {
+		n[f.Severity]++
+	}
+	var parts []string
+	for _, s := range order {
+		if n[s] > 0 {
+			parts = append(parts, strconv.Itoa(n[s])+" "+s)
+			delete(n, s)
+		}
+	}
+	rest := make([]string, 0, len(n))
+	for s := range n {
+		rest = append(rest, s)
+	}
+	sort.Strings(rest)
+	for _, s := range rest {
+		parts = append(parts, strconv.Itoa(n[s])+" "+s)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // EventKind says what happened in a LogEvent.
@@ -642,4 +803,20 @@ type Commit struct {
 type CommitPatch struct {
 	Body  string
 	Patch Patch
+}
+
+// Status is the coarse thread status of the phase: what pins a task under
+// Needs you, and the glyph a 0.2 deck would give it.
+func (p Phase) Status() ThreadStatus {
+	switch p {
+	case PhasePlan, PhaseAsks, PhaseApprove, PhaseFailed:
+		return StatusNeedsYou
+	case PhaseWorking, PhaseMerging, PhaseChecking:
+		return StatusWorking
+	case PhaseReview:
+		return StatusReview
+	case PhaseDone, PhaseMerged:
+		return StatusDone
+	}
+	return StatusUnknown
 }

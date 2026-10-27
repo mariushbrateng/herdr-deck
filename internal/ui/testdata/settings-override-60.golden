@@ -1,13 +1,13 @@
  Admin rebuild                           ◐ 2  ◇ 1  ○ 1  ✉ 0
 ────────────────────────────────────────────────────────────
 ─ Settings · /home/ada/.config/herdr-deck/config.toml ──────
- [linear] Linear links and status                          │
    linear.workspace        acme                    file    │
    linear.status           true                    default │
    linear.api_key_command  none                    default │
-                                                           ┃
- [github] pull requests                                    ┃
+                                                           │
+ [github] pull requests                                    │
    github.enabled          true                    default ┃
+   github.repos            none                    default ┃
                                                            ┃
  [figma] Figma links                                       ┃
    figma.desktop           false                   default ┃

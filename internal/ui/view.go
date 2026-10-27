@@ -246,6 +246,9 @@ func (m Model) render() string {
 		lines = append(lines, body...)
 	}
 	lines = append(lines, rule, m.footer(w))
+	if b, ok := m.statePickBox(); ok {
+		lines = b.over(lines, w)
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -310,7 +313,16 @@ func (m Model) header(w int) string {
 	if c := len(m.snap.Missing); c > 0 {
 		parts = append(parts, warnStyle.Bold(true).Render(fmt.Sprintf("! %d", c)))
 	}
-	return spread(" "+bold.Render(m.snap.Project.Title()), strings.Join(parts, "  ")+" ", w)
+	left := " " + bold.Render(m.snap.Project.Title())
+	if m.view != viewTasks {
+		// The view tabs, after the project's name where it fits.
+		tabs, _ := m.viewTabsText()
+		left = " " + tabs
+		if !narrow {
+			left = " " + bold.Render(m.snap.Project.Title()) + "  " + tabs
+		}
+	}
+	return spread(left, strings.Join(parts, "  ")+" ", w)
 }
 
 // bangZone is where the header's `! N` sits, for clicks.
@@ -346,6 +358,12 @@ func columns(w int) cols {
 }
 
 func (m Model) columnTitles(w int) string {
+	switch m.view {
+	case viewLinear:
+		return m.issueColumnTitles(w)
+	case viewGitHub, viewReview:
+		return m.pullColumnTitles(w)
+	}
 	c := columns(w)
 	s := "    " + pad("WORK", c.work) + "  "
 	if c.wide {
@@ -364,7 +382,14 @@ func (m Model) listLines(w, h int) []string {
 	case !m.loaded:
 		lines = append(lines, dim.Render("  Reading "+m.snap.Project.Title()+"…"))
 	case len(m.rows) == 0:
-		msg := ansi.Wrap("Nothing yet. Rows appear when the coordinator writes TASKS.md or starts a thread.", max(w-4, 10), "")
+		text := "Nothing yet. Rows appear when the coordinator writes TASKS.md or starts a thread."
+		switch m.view {
+		case viewLinear:
+			text = m.emptyIssues()
+		case viewGitHub, viewReview:
+			text = m.emptyPulls()
+		}
+		msg := ansi.Wrap(text, max(w-4, 10), "")
 		lines = append(lines, "")
 		for _, l := range strings.Split(msg, "\n") {
 			lines = append(lines, dim.Render("  "+l))
@@ -401,6 +426,12 @@ type cell struct {
 func (m Model) rowLine(r row, sel bool, w int, asOf string) string {
 	if r.kind == rowGap {
 		return ""
+	}
+	if r.kind == rowWork && r.issue != nil {
+		return m.issueLine(r, sel, w)
+	}
+	if r.kind == rowWork && r.pull != nil {
+		return m.pullLine(r, sel, w)
 	}
 	mark := " "
 	markSt := plain
@@ -441,6 +472,8 @@ func (m Model) rowLine(r row, sel bool, w int, asOf string) string {
 	switch {
 	case r.task != nil && r.task.Done:
 		glyph = "✓"
+	case hasThread && t.Board != nil:
+		glyph, gst = phaseGlyph(t.Board.Phase), phaseStyle(t.Board.Phase)
 	case hasThread:
 		glyph, gst = statusGlyph(t.Status), statusStyle(t.Status)
 	}
@@ -455,12 +488,16 @@ func (m Model) rowLine(r row, sel bool, w int, asOf string) string {
 	} else if (r.task != nil && r.task.Done) || (hasThread && t.Status == deck.StatusDone) || stale {
 		workSt = dim
 	}
+	work := inline(r.title(), workSt, m.light)
+	if hasThread && t.Board != nil {
+		work = boardMarks(t.Board) + work
+	}
 	cells = append(cells,
 		cell{text: " "},
 		cell{text: mark, style: markSt},
 		cell{text: glyph, style: gst},
 		cell{text: " "},
-		cell{text: inline(r.title(), workSt, m.light), raw: true, width: c.work},
+		cell{text: work, raw: true, width: c.work},
 		cell{text: "  "},
 	)
 	if c.wide {
@@ -471,7 +508,12 @@ func (m Model) rowLine(r row, sel bool, w int, asOf string) string {
 		cells = append(cells, cell{text: id, style: dim, width: c.thread}, cell{text: "  "})
 	}
 	status, sst := "", dim
-	if hasThread {
+	if hasThread && t.Board != nil {
+		status, sst = boardStatus(t), phaseStyle(t.Board.Phase)
+		if !c.wide && t.PR != nil && t.PR.Number > 0 {
+			status = fmt.Sprintf("#%d %s", t.PR.Number, status)
+		}
+	} else if hasThread {
 		status, sst = rowStatus(t, !c.wide), statusStyle(t.Status)
 		if stale {
 			sst = dim
@@ -507,10 +549,13 @@ func (m Model) rowLine(r row, sel bool, w int, asOf string) string {
 // when the row shows no PR.
 func (m Model) prCell(r row) (x0, x1 int, ok bool) {
 	pr, own, ok := r.pr()
-	if !ok || pr.Number <= 0 {
-		return 0, 0, false
+	if !ok || pr.Number <= 0 || r.pull != nil {
+		return 0, 0, false // a GitHub view's row is all PR
 	}
 	c := columns(m.width)
+	if r.issue != nil && !c.wide {
+		return 0, 0, false // the Linear view shows the PR only at 80 columns
+	}
 	text := fmt.Sprintf("#%d", pr.Number)
 	x0 = 4 + c.work + 2 // mark, glyph and space; WORK and its gap
 	width := c.status
@@ -686,7 +731,11 @@ func (m Model) finish(s string, sel bool, w int) string {
 
 func (m Model) footer(w int) string {
 	if m.status != "" {
-		return warnStyle.Render(fit(" "+m.status, w))
+		st := warnStyle
+		if m.status == m.failed {
+			st = failStyle.Bold(true)
+		}
+		return st.Render(fit(" "+m.status, w))
 	}
 	if m.notice != "" {
 		return footerLine(okStyle.Render(" "+m.notice), m.opt.Version, w)
@@ -697,6 +746,11 @@ func (m Model) footer(w int) string {
 	switch {
 	case m.pick.open:
 		hint = m.pickerFooter()
+	case m.moveArmed != "":
+		hint = "↑↓ ↵ pick  1-9 a-z the state's key  click one  esc keeps it"
+		if narrow {
+			hint = "↑↓ ↵ pick  esc keeps it"
+		}
 	case m.choosing != noKind:
 		var nums []int
 		for i, l := range m.links() {
@@ -784,6 +838,25 @@ func pad(s string, n int) string {
 // focus.
 func (m Model) rowHint(r row, narrow bool) string {
 	t, hasThread := r.thread()
+	if r.pull != nil && !m.dfocus {
+		if narrow {
+			return "↵ g open  ←→ tabs  V tasks"
+		}
+		return "↵ g open the PR  tab drawer  ←→ tabs  V tasks  ? help"
+	}
+	if r.issue != nil && !m.dfocus {
+		pane := ""
+		if hasThread {
+			pane = "  ↵ task pane"
+		}
+		if narrow {
+			if hasThread {
+				pane = "  ↵ pane"
+			}
+			return "m move  P prio  1-9 link" + pane + "  ←→ tabs  V tasks"
+		}
+		return "m move  P prio  1-9 link  l g first" + pane + "  ←→ tabs  V tasks  ? help"
+	}
 	tab := m.curTab()
 	layout := "S split"
 	if m.split {

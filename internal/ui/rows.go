@@ -36,7 +36,14 @@ type row struct {
 	foldable bool                // Needs you never folds
 	glyphs   []deck.ThreadStatus // a folded list's open threads
 
-	// Work rows. task is nil for a thread no task names.
+	// Work rows. task is nil for a thread no task names. issue is set on
+	// the Linear view's rows, whose threads are the board tasks whose
+	// title starts with its ID, the one it shows first.
+	issue *deck.LinearIssue
+	// pull is set on the GitHub views' rows, with their links: the PR,
+	// and the Linear issue its title names.
+	pull    *deck.MyPR
+	links   []deck.Link
 	task    *deck.Task
 	threads []deck.Thread
 	// updates counts the unhandled inbox items about the row's threads
@@ -51,6 +58,10 @@ func (r row) title() string {
 		return r.list
 	case r.kind == rowGap:
 		return ""
+	case r.issue != nil:
+		return r.issue.Title
+	case r.pull != nil:
+		return r.pull.Title
 	case r.task != nil:
 		return r.task.Title
 	case len(r.threads) > 0:
@@ -70,6 +81,9 @@ func (r row) thread() (deck.Thread, bool) {
 		return deck.Thread{}, false
 	}
 	best := r.threads[0]
+	if r.issue != nil {
+		return best, true
+	}
 	for _, t := range r.threads[1:] {
 		if urgency(t.Status) < urgency(best.Status) {
 			best = t
@@ -87,6 +101,9 @@ func (r row) thread() (deck.Thread, bool) {
 func (r row) pr() (pr *deck.PullRequest, own, ok bool) {
 	if r.kind != rowWork {
 		return nil, false, false
+	}
+	if r.pull != nil {
+		return &r.pull.PR, true, true
 	}
 	if t, has := r.thread(); has && t.PR != nil {
 		return t.PR, true, true
@@ -234,6 +251,11 @@ func buildRows(snap deck.Snapshot, folds map[string]bool, folded []string) []row
 		rows = append(rows, pinned...)
 	}
 	for _, l := range lists {
+		// A board's priority list whose tasks all wait on the user is
+		// all under Needs you: its heading alone says nothing.
+		if len(l.rows) == 0 && snap.Project.Slug == boardSlug {
+			continue
+		}
 		isFolded, ok := folds[l.name]
 		if !ok {
 			isFolded = startsFolded(l.name, folded)
@@ -264,6 +286,12 @@ func buildRows(snap deck.Snapshot, folds map[string]bool, folded []string) []row
 // Notion, GitHub, localhost, each kind in the order found. A task offers its
 // own links and its threads'.
 func rowLinks(r row) []deck.Link {
+	if r.kind == rowWork && r.issue != nil {
+		return issueLinks(r)
+	}
+	if r.kind == rowWork && r.pull != nil {
+		return r.links
+	}
 	var links []deck.Link
 	add := func(ls []deck.Link) {
 		for _, l := range ls {

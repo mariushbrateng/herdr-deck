@@ -78,6 +78,7 @@ const (
 	actBox                // the Impact canvas's box n (impactLayout.boxes)
 	actSite               // the Impact detail's site n (impactLayout.sites)
 	actEdge               // the Impact detail's edge n (impactLayout.edges)
+	actState              // open the state picker on the selected issue
 )
 
 type action struct {
@@ -448,6 +449,10 @@ var helpLines = [][2]string{
 	{"PR", "the thread PR's status, what it is, its description and its conversation; ↵ or a click opens a comment on GitHub; space, → l or a click on ▸ unfolds an app's comment or a resolved thread, ← h folds it"},
 	{"r", "the thread's report, full height"},
 	{"c", "a failed check's log, full height (or click its chip); c again the next"},
+	{"P 1-4", "board: priority 1 Urgent … 4 Low, 0 none; R opens the report. On the Linear view it sets the issue's priority in Linear"},
+	{"V", "switch between the view tabs and the tasks"},
+	{"← →", "the view tab before or after, or click one: Linear (your issues by state), GitHub (your open PRs by repo, github.repos) and Review (PRs you are asked to review), each with review, CI and merge state; ↵ or g opens the PR"},
+	{"m", "Linear view: pick the issue's state in Linear from its team's states, in Linear's order: ↑↓ and ↵, the state's key (1-9, then letters, so m3 moves it to the third), or a click; esc keeps it. A click on the row's state mark or the drawer's status opens it too"},
 	{"z", "drawer: normal, full height, hidden"},
 	{"+ -", "grow or shrink the drawer a line (or drag the rule above it); the height is kept for the next start"},
 	{"pgup pgdn", "scroll the drawer, or the preview while it shows"},
@@ -457,7 +462,7 @@ var helpLines = [][2]string{
 	{"w", "what's new: the changelog, newest first; with ↑ in the header, also what the newer version brings"},
 	{"?", "this help; esc returns"},
 	{"q", "quit"},
-	{"mouse", "click a row, tab, chip, file, comment, Log event, list heading, ! N or the other-projects line; a click on a row's PR number shows its PR tab, and a second click opens the PR on GitHub; drag the rule above the drawer to resize it, or a scrollbar's thumb to scroll (a press on its track jumps there); the wheel moves the list or scrolls the drawer"},
+	{"mouse", "click a row, tab, chip, file, comment, Log event, list heading, ! N or the other-projects line; a click on a Linear issue's state mark or status picks its state; a click on a row's PR number shows its PR tab, and a second click opens the PR on GitHub; a click on a view tab in the header shows it; drag the rule above the drawer to resize it, or a scrollbar's thumb to scroll (a press on its track jumps there); the wheel moves the list or scrolls the drawer"},
 }
 
 // tilde shortens a path under the home folder to ~/….

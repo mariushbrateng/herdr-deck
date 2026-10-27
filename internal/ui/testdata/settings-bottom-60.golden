@@ -3,11 +3,12 @@
 ─ Settings · /home/ada/.config/herdr-deck/config.toml ──────
  [github] pull requests                                    │
    github.enabled          true                    default │
+   github.repos            none                    default │
                                                            │
  [figma] Figma links                                       │
    figma.desktop           false                   default │
                                                            │
- [browser] web links                                       │
+ [browser] web links                                       ┃
    browser.reuse_tabs      true                    default ┃
                                                            ┃
  [updates] new versions of the deck                        ┃
@@ -20,9 +21,8 @@
                                                            ┃
  [diff] what d opens, and the Files tab                    ┃
    diff.command            hunk diff {base} -- {…  default ┃
-   diff.terminal           true                    default ┃
- ▸ diff.view               list                    default │
-     the Files section's view at start: list, or tree      │
-     (files under their folders); d t switches             │
+ ▸ diff.terminal           true                    default │
+     the diff tool is a terminal program: open it in a     │
+     new herdr pane                                        │
 ────────────────────────────────────────────────────────────
  ↵ edit  x remove  j k move  esc back  q quit         v9.9.9

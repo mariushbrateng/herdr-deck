@@ -54,6 +54,7 @@ drawer_height = 0.35
 		KeyAutoRestart:     {Text: "true", Source: FromDefault},
 		KeyReuseTabs:       {Text: "true", Source: FromDefault},
 		KeyGitHubEnabled:   {Text: "true", Source: FromDefault},
+		KeyGitHubRepos:     {Text: "none", Source: FromDefault},
 		KeyArchEnabled:     {Text: "true", Source: FromDefault},
 		KeyArchTests:       {Text: "false", Source: FromDefault},
 		KeyFigmaDesktop:    {Text: "true", Source: FromFile},
@@ -178,6 +179,24 @@ func TestSpecs(t *testing.T) {
 		if got != want {
 			t.Errorf("Check(ui.folded_lists, %q) = %q, want %q", text, got, want)
 		}
+	}
+	for text, want := range map[string]string{
+		"acme/webapp, acme/deploy": "",
+		"none":                     "",
+		"webapp":                   `"webapp" is not a repo such as owner/name`,
+		"acme/web repo:evil/x":     `"acme/web repo:evil/x" is not a repo such as owner/name`,
+	} {
+		got := ""
+		if err := Check(KeyGitHubRepos, text); err != nil {
+			got = err.Error()
+		}
+		if got != want {
+			t.Errorf("Check(github.repos, %q) = %q, want %q", text, got, want)
+		}
+	}
+	s := resolveFile(t, "[github]\nrepos = [\"acme/web\", \"nope\"]\n", Flags{}, nil)
+	if len(s.GitHubRepos) != 0 || !strings.Contains(strings.Join(s.Problems, "\n"), `github.repos: "nope" is not a repo such as owner/name; ignored`) {
+		t.Errorf("a bad repo in the file: repos %q, problems %q", s.GitHubRepos, s.Problems)
 	}
 	sp, _ := SpecFor(KeyEditorCommand)
 	for _, tt := range []struct {

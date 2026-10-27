@@ -203,6 +203,7 @@ type Reader struct {
 	inflight bool
 	retryAt  time.Time
 	problem  string // why the last fetch failed, for Snapshot.Missing
+	mine     mineCache
 	wg       sync.WaitGroup
 }
 
@@ -347,8 +348,11 @@ func (r *Reader) Fetch(ctx context.Context, ids []string) {
 // holding the key), whether the key was refused, and when Linear says to
 // try again.
 type fetchError struct {
-	msg     string
-	auth    bool
+	msg  string
+	auth bool
+	// denied says Linear knew the key but would not let it do this, as
+	// a read-only key asked to change an issue.
+	denied  bool
 	retryAt time.Time
 }
 
@@ -500,6 +504,11 @@ type gqlError struct {
 	} `json:"extensions"`
 }
 
+// forbidden says Linear knew the key but would not let it do this.
+func (e gqlError) forbidden() bool {
+	return strings.EqualFold(e.Extensions.Code, "FORBIDDEN") || strings.Contains(strings.ToLower(e.Extensions.Type), "forbidden")
+}
+
 // request asks for one batch. The map holds every ID asked for; an ID
 // Linear does not know maps to nil. urlKey is the workspace's URL key.
 func (r *Reader) request(ctx context.Context, key string, ids []string) (issues map[string]*deck.Issue, urlKey string, err error) {
@@ -578,6 +587,16 @@ func (r *Reader) Workspace(ctx context.Context) (string, error) {
 // post sends one GraphQL request and returns its data. Errors are
 // *fetchError, saying whether the key was refused and when to retry.
 func (r *Reader) post(ctx context.Context, key string, body []byte) (map[string]json.RawMessage, error) {
+	gr, err := r.postResponse(ctx, key, body)
+	if err != nil {
+		return nil, err
+	}
+	return gr.Data, nil
+}
+
+// postResponse is post with the whole answer, errors about parts of it
+// included.
+func (r *Reader) postResponse(ctx context.Context, key string, body []byte) (*gqlResponse, error) {
 	endpoint := r.Endpoint
 	if endpoint == "" {
 		endpoint = Endpoint
@@ -606,7 +625,7 @@ func (r *Reader) post(ctx context.Context, key string, body []byte) (map[string]
 
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, &fetchError{msg: "HTTP " + strconv.Itoa(resp.StatusCode), auth: true}
+		return nil, &fetchError{msg: "HTTP " + strconv.Itoa(resp.StatusCode), auth: true, denied: resp.StatusCode == http.StatusForbidden}
 	case resp.StatusCode == http.StatusTooManyRequests:
 		at := r.resetAt(resp.Header)
 		return nil, &fetchError{msg: "rate limited until " + at.Local().Format("15:04"), retryAt: at}
@@ -632,7 +651,7 @@ func (r *Reader) post(ctx context.Context, key string, body []byte) (map[string]
 	// one team's search only leaves that team's IDs without a state.
 	if gr.Data == nil {
 		if len(gr.Errors) > 0 {
-			return nil, &fetchError{msg: "Linear: " + oneLine(gr.Errors[0].Message)}
+			return nil, &fetchError{msg: "Linear: " + oneLine(gr.Errors[0].Message), denied: gr.Errors[0].forbidden()}
 		}
 		return nil, &fetchError{msg: "Linear answered HTTP " + strconv.Itoa(resp.StatusCode) + " without data"}
 	}
@@ -643,7 +662,7 @@ func (r *Reader) post(ctx context.Context, key string, body []byte) (map[string]
 		r.retryAt = at
 		r.mu.Unlock()
 	}
-	return gr.Data, nil
+	return &gr, nil
 }
 
 // resetAt is when Linear's rate limit resets (X-RateLimit-Requests-Reset,

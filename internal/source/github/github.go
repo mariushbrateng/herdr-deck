@@ -86,7 +86,11 @@ type Reader struct {
 	// a Sources note; problem why the last read failed otherwise.
 	off, problem string
 	logs         map[int64]deck.CheckLog
-	wg           sync.WaitGroup
+	// repos are the repos the GitHub views follow (SetRepos), mine
+	// their PRs (mine.go).
+	repos []string
+	mine  mineCache
+	wg    sync.WaitGroup
 }
 
 type entry struct {

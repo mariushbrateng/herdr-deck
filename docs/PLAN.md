@@ -67,6 +67,40 @@ All under the projects root (`$HERDR_PROJECTS_ROOT`, else
 **Never** call `herdr-projects context <slug>` without `--peek`: without it
 the command marks inbox items as seen.
 
+### herdr-projects 1.x: the board
+
+herdr-projects 1.0 replaced the project folders with one work board of
+tasks, kept in the same home folder (`~/.herdr-projects`). The deck reads
+it with `internal/source/board` when `<root>/data/tasks` exists and the
+slug names no 0.2 project folder (one with a `PROJECT.md`); `--project
+<repo>` (or `$HERDR_DECK_PROJECT`) narrows it to one repo's tasks, and the
+toggle opens it from any pane. 0.2 projects keep their reader.
+
+| What | Where | Notes |
+|---|---|---|
+| Tasks | `herdr-projects list --json` (`--all` with archived ones) | Preferred. Each row: `id` (`repo/n`), `state`, `stage`, `title`, `msg`, `progress`, `eta`, `pr`, `review`, `reviewRound`, `queue`, `research`, `chat`. |
+| One task | `herdr-projects details <id>` | `task.id` is the repo's key (`WEB-7`, the deck's thread id), `description`, `worktree`, `branch`, `report`, `review` (with its findings and page), `limits.time.usedMs`, `limits.tokens.used`. |
+| Task folder | `<root>/data/tasks/<repo>/<n>/task.json`, `closing-note.md` | Only what the CLI leaves out: `link.pane`, `from` (the base), `root` (the repo), `usage.context`, `prState`/`prMerged`, `created`/`at`. When the CLI cannot run, every task is read from here. |
+| Reports | `<root>/reports/<repo>/<n>/` | The report file the board names, else `index.html` or `report.md`. `R` opens it, `r` shows a Markdown report or the closing note. |
+| Priority | `$XDG_STATE_HOME/herdr-deck/priorities.json` | The deck's own, by board id; the board never sees it. 1 Urgent, 2 High, 3 Medium, 4 Low, as Linear numbers them (decided with the user); `P` then `1`–`4` sets it, `0` clears. |
+
+The board's stage maps to a phase with its own glyph and colour, after
+herdr-projects' `docs/colours.md`: to do `○` grey, queued `◌` pink,
+working `◐` amber, the board's own check `◑` light grey, plan ready `◆` and ready to approve `★` green, asks
+you `●` and failed `✕` red, in review `◇` blue, merging `↻` and done `✓`
+teal, merged `✓` purple. What waits on the user (plan, asks, approve,
+failed) is pinned under Needs you. The lists are the priorities in use,
+then No priority, then Resolved (folded); within a list, tasks sort by
+phase (what waits on you first, finished work last), then newest first.
+
+A task is marked critical (`⚠`) when its review tier or a finding is
+critical, or its worktree's changes touch a path the repo's AGENTS.md
+lists under a "Critical" heading or its INVARIANTS.md names in a
+`(CRITICAL)` section, or a path word such as auth, migrations, alembic,
+db, security, secrets or permissions. Its frontend folder (`frontend/`,
+`web/`, … with a `package.json`, or the root) is noted when a frontend
+file changed; `u` starts it through the repo's dev manifest.
+
 ### Loose task parsing
 
 Accept both shapes. For each list item under a `##` heading:
@@ -512,7 +546,9 @@ Keys:
   log, Overview `starting…` while there are no links yet, and the DEV
   column a yellow `◐` until the ports answer.
 - `p`: the project picker (see Other projects above).
-- Open URLs with `open` (macOS) / `xdg-open`.
+- Open URLs with `open` (macOS) / `xdg-open`. Over SSH, or on Linux with no
+  display, copy them with OSC 52 instead (herdr 0.9.5 has no API that opens
+  a URL on the client; it forwards a pane's OSC 52 to the client).
 
 Mouse: a click selects a row, a click on a tab switches to it, a click on a
 chip, file or Log event opens it, and clicks on `! N` and on a list heading
@@ -845,6 +881,95 @@ fetch.
   only and redacted from every error; a command's output is never echoed.
 - Tests use a fake `http.RoundTripper` and command runner; they never call
   Linear.
+
+## Linear view
+
+Decided with the user on 2026-10-22 (board task DCK-2). With a Linear API
+key the deck starts on the Linear view instead of the tasks, which the
+user sees on the board anyway; `V` switches between the two, and the
+tasks view with DCK-1's own priorities is unchanged.
+
+- **List.** The open issues assigned to the key's user, in every team the
+  key reaches (for example Engineering and Infra), with state type started, unstarted or
+  backlog: done, canceled (duplicates are canceled too) and triage are left
+  out. One group per state name (teams have their own states; a name's group takes the rank of its furthest kind and earliest position), in Linear's order (under way first, then
+  to do, then the backlog; by state position within a type), each sorted
+  by Linear priority (Urgent first, none last), then most recently
+  changed. Groups fold like lists (`ui.folded_lists`).
+- **Task column.** A board task belongs to an issue when its title starts
+  with the issue's ID (`deck.TitleIssueID`: `ENG-1656 …`, `[ENG-1656] …`,
+  word boundary, so ENG-16560 is another issue), whatever the team. With
+  several, an open one comes first, then the newest; the row shows it, with
+  `+N` for the others, and the drawer lists them all. The row's PR, links,
+  dev dots and ↵ (task pane) come from it.
+- **Drawer.** The tab bar has one tab, Linear: an Issue section (status,
+  prio, labels in their colours, project, team, task, updated), the PR
+  section when the task has one, the description (glamour), the newest 10
+  comments, oldest first, and the links.
+- **Changes.** `m`, or a click on the row's state mark or the drawer's
+  status, opens the state picker (decided with the user on 2026-10-22,
+  board task DCK-3): a box over the list, under the row (above it when it
+  does not fit), with the team's states in Linear's order (a team can have 16;
+  the box scrolls when the pane is short). `↑↓`/`↵`, a state's key (1–9,
+  then a–z without m, so `m3` still works as a chord) or a click picks one;
+  esc, m, another key or a click outside keeps it. The states keep the
+  deck's own glyph colours, not Linear's (the user did not ask for them).
+  `P` then `0`–`4` sets the Linear priority. Both show at once and reload;
+  a refusal shows red in the footer and as a `refused` line in the drawer
+  until a change to that issue goes through. A read-only key (HTTP 403 or a
+  `FORBIDDEN` GraphQL error) says it may not change issues, and the key is
+  not dropped, as it still reads.
+- **Source** (`internal/source/linear/mine.go`): one request a minute,
+  `viewer.assignedIssues(first: 50, filter: state type in …)` with labels
+  (10), comments (10, `orderBy: createdAt`, which Linear returns newest
+  first) and `teams(first: 20) { states }`, about 3,500 complexity points.
+  Changes are `issueUpdate(id, input: { stateId | priority })`. Both were
+  checked against Linear's schema (it validates before it authenticates)
+  on 2026-10-22. Failures go to `Snapshot.Missing` as `Linear issues: …`,
+  with the same backoff as the statuses. Without a key, `Snapshot.Mine.Off`
+  says so and the deck starts on the tasks.
+- The deck reaches Linear with its own API key, not the Linear connector of
+  Claude: that connector's login lives in claude.ai and is reachable only
+  through Claude, not from a standalone binary.
+
+## GitHub and Review views
+
+Decided with the user on 2026-10-26. Next to the Linear view, two more
+view tabs: **GitHub**, the open PRs gh's user wrote, and **Review**, the
+open PRs they are asked to review (`review-requested:@me`, so a team's
+request counts too). The header shows the tabs after the project's name,
+each with its count in parentheses (`GitHub (10)`), the shown one in the
+drawer tabs' blue; a narrow header leaves the name out.
+
+- **Keys.** `←`/`→` step through Linear, GitHub, Review (the ends stay
+  put), and a click on a tab shows it. `V` goes to the tasks and back to
+  the tab last shown; on the tasks the arrows do nothing. In the focused
+  drawer the arrows stay the PR, Commits and Impact tabs' own.
+- **Repos.** `github.repos` (a list, `owner/name`; none lists every repo).
+  The user follows acme/webapp and acme/deploy. A name
+  that is not `owner/name` is refused, so a setting can add nothing else
+  to the search.
+- **List.** One group per repo, in `github.repos`' order, the most recently
+  changed PR first. A row: a mark that sums it up (green can merge, red
+  something to fix, yellow waiting, ◇ a draft), the number and title (a
+  draft's dim with `draft`; on Review, the author), then REVIEW (approved
+  green, waiting yellow, changes red, none dim), CI (the head commit's
+  rollup: passed green, running yellow, failed red, none dim), MERGE
+  (ready green, blocked and behind yellow, conflict red, draft and not
+  worked out yet dim) and LINKS: G for the PR, L for the Linear issue the
+  title names when it is one of the Linear view's. Below 72 columns the
+  three states are a glyph each. `↵` and `g` open the PR.
+- **Drawer.** The PR tab only, as for a thread PR: the GitHub reader's
+  Focus and Detail read the shown PR in full (checks, review threads,
+  description, conversation), and `ApplyMine` lays that read over the
+  list's; the newer one gives the review, merge state and CI.
+- **Source** (`internal/source/github/mine.go`): one `gh api graphql` a
+  minute with two aliased `search(type: ISSUE, first: 50)`, `is:pr is:open
+  archived:false author:@me` and `review-requested:@me`, each with the
+  repos and `sort:updated-desc`. It costs one point of the 5,000 an hour
+  (checked 2026-10-26). Failures go to `Snapshot.Missing` as `GitHub PRs:
+  …`, with the PR reads' back-off; gh missing or logged out says so in the
+  view. Off with `github.enabled = false`.
 
 ## GitHub pull requests
 

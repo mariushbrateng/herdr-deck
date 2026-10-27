@@ -1,0 +1,4 @@
+[{"id":"webapp/5","state":"working","app":"claude","title":"ENG-791 Guard på migrations","msg":"Writing the guard","stage":"working","progress":40,"eta":12},
+ {"id":"webapp/7","state":"idle","title":"ENG-1025 Lag speck","msg":"","stage":"todo"},
+ {"id":"webapp/2","state":"done","app":"claude","title":"ENG-890 Improve seeding","msg":"Review: Pass","stage":"done","pr":"https://github.com/acme/webapp/pull/41","review":{"meets":true,"pass":true,"gate":"major","text":"ok","findings":[{"id":"F1","severity":"minor","subject":"a"},{"id":"F2","severity":"trivial","subject":"b"}]},"reviewRound":1},
+ {"id":"agent-plugins/1","state":"blocked","title":"Plan the skill","msg":"Which office?","stage":"plan"}]

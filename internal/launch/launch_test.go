@@ -122,3 +122,27 @@ func TestShellLine(t *testing.T) {
 		t.Errorf("ShellLine = %s, want %s", got, want)
 	}
 }
+
+func TestCanOpen(t *testing.T) {
+	cases := []struct {
+		goos string
+		env  map[string]string
+		want bool
+	}{
+		{"darwin", nil, true},
+		{"windows", nil, true},
+		{"linux", map[string]string{"DISPLAY": ":0"}, true},
+		{"linux", map[string]string{"WAYLAND_DISPLAY": "wayland-0"}, true},
+		{"freebsd", map[string]string{"DISPLAY": ":0"}, true},
+		{"linux", nil, false},
+		{"linux", map[string]string{"DISPLAY": ":0", "SSH_CONNECTION": "10.0.0.2 42186 10.0.0.1 22"}, false},
+		{"darwin", map[string]string{"SSH_CONNECTION": "10.0.0.2 42186 10.0.0.1 22"}, false},
+		{"darwin", map[string]string{"SSH_TTY": "/dev/ttys003"}, false},
+	}
+	for _, c := range cases {
+		getenv := func(k string) string { return c.env[k] }
+		if got := CanOpen(c.goos, getenv); got != c.want {
+			t.Errorf("CanOpen(%s, %v) = %v, want %v", c.goos, c.env, got, c.want)
+		}
+	}
+}

@@ -1,26 +1,146 @@
 # herdr-deck
 
-[![ci](https://github.com/FredricW/herdr-deck/actions/workflows/ci.yml/badge.svg)](https://github.com/FredricW/herdr-deck/actions/workflows/ci.yml)
+[![ci](https://github.com/mariushbrateng/herdr-deck/actions/workflows/ci.yml/badge.svg)](https://github.com/mariushbrateng/herdr-deck/actions/workflows/ci.yml)
 
-A status pane for [herdr-projects](https://github.com/eliasstravik/herdr-projects):
-a Go + Charm TUI that runs in a split next to a project's coordinator and shows
-its tasks, threads and their status, Linear / Notion / Figma / GitHub links and
-running dev servers.
-
-The deck reads a project's files, thread list, herdr's live state and each
-worktree's dev servers, and refreshes as they change. As a herdr plugin it
-opens next to each coordinator by itself. See [docs/PLAN.md](docs/PLAN.md)
-for the plan and milestones.
+Deck is a status pane for [herdr](https://github.com/herdrdev/herdr)
+and [herdr-projects](https://github.com/eliasstravik/herdr-projects). It is
+a Go + Charm terminal UI that runs in a split next to your coordinator
+agent and shows, at a glance, what every task and agent is doing: its
+stage, pull request and CI, review findings, Linear issue, Figma and
+Notion links, changed files and running dev servers.
 
 ![The deck on sample data: Users page needs you and is pinned on top; the drawer below shows its card and Overview tab, then ] shows its Files, Commits, Impact and Log tabs; moving down the list keeps the tab, the review row shows its PR, links and dev servers, then its PR tab with what the PR is, its status, description and comments, and the folded Backlog opens and shuts with space.](docs/demo/hero.gif)
+
+## About this fork
+
+This repository is a fork of
+[FredricW/herdr-deck](https://github.com/FredricW/herdr-deck), written by
+Hans Fredric Waadeland. Almost all of the deck is his work; the fork keeps
+his history and follows upstream. On top of it, the fork adds:
+
+- **herdr-projects 1.x**: reads the work board (`herdr-projects list` and
+  `details`) with stages in colour, a priority per task (`P` then `1`–`4`)
+  and a red `⚠` on changes to critical areas.
+- **Linear view**: your own open Linear issues, grouped by state, with the
+  board task and PR behind each one; `m` moves an issue to another state
+  and `P` sets its priority.
+- **GitHub and Review views**: your open pull requests and the ones you
+  are asked to review, with review, CI and merge state per PR.
+- **Links without a screen**: on a headless machine (over SSH), the deck
+  copies a link to the clipboard instead of trying to open it.
+
+Changes that make sense upstream are best sent to
+[FredricW/herdr-deck](https://github.com/FredricW/herdr-deck) as well.
+
+## Quick start
+
+You need:
+
+- [herdr](https://github.com/herdrdev/herdr) 0.9.3 or newer, on macOS
+  or Linux;
+- [Go](https://go.dev/dl/) 1.27 or newer (the fork builds from source);
+- optional: [herdr-projects](https://github.com/eliasstravik/herdr-projects)
+  for tasks, [`gh`](https://cli.github.com) for pull requests and a Linear
+  API key for Linear.
+
+Install it as a herdr plugin and bind a key to show or hide it:
+
+```sh
+herdr plugin install mariushbrateng/herdr-deck
+```
+
+```toml
+# ~/.config/herdr/config.toml
+[[keys.command]]
+key = "prefix+d"
+type = "plugin_action"
+command = "herdr-deck.toggle"
+description = "toggle the deck"
+```
+
+Reload with `herdr server reload-config`. A deck now opens next to each
+coordinator by itself, and `prefix+d` shows or hides it in any tab. To look
+around without herdr, build it and run it on sample data:
+
+```sh
+make build
+./bin/herdr-deck --fake                 # a sample project
+./bin/herdr-deck --fake --project board # a sample herdr-projects 1.x board
+```
+
+### The most used keys
+
+| Key | Action |
+|---|---|
+| `j` / `k`, `↑` / `↓` | move; the drawer below follows |
+| `←` / `→`, `V` | step between the Linear, GitHub and Review views; `V` to the tasks and back |
+| `enter` | focus the task's herdr pane; on a PR row, open the PR |
+| `[` / `]` | previous / next drawer tab: Overview, Files, Commits, Impact, PR, Log |
+| `l` `f` `n` `g` | open the row's Linear, Figma, Notion or PR link |
+| `m`, `P` | move a Linear issue to another state, set its priority |
+| `s` | settings, `?` all keys, `q` quit |
+
+The full list is under [Keys](#keys).
+
+### Linear: your own API key
+
+Create a personal API key in Linear under *Settings → Account → Security &
+access* (write access lets `m` and `P` change issues; read access is
+enough for the rest). The deck never stores it. Give it to the deck through
+the environment or a command that prints it:
+
+```sh
+export LINEAR_API_KEY=lin_api_…
+```
+
+```toml
+# ~/.config/herdr-deck/config.toml
+[linear]
+api_key_command = "op read op://Private/Linear/credential"   # e.g. 1Password
+```
+
+Decks that herdr opens do not see your shell's environment, so use
+`api_key_command` for them. More under [Linear issue status](#linear-issue-status)
+and [Linear view](#linear-view).
+
+### GitHub: your own `gh` login
+
+The deck reads pull requests through the [GitHub CLI](https://cli.github.com)
+and never sees a token itself. Log in once, and pick the repos the GitHub
+and Review views list (none lists every repo):
+
+```sh
+gh auth login
+```
+
+```toml
+# ~/.config/herdr-deck/config.toml
+[github]
+repos = ["acme/webapp", "acme/deploy"]
+```
+
+More under [GitHub and Review views](#github-and-review-views) and
+[GitHub pull requests](#github-pull-requests).
+
+## Reference
+
+The rest of this README is the full reference. The plan and its
+milestones are in [docs/PLAN.md](docs/PLAN.md), and
+[CONTRIBUTING.md](CONTRIBUTING.md) says how to send a change.
+
+The deck reads a project's files, thread list, herdr's live state and each
+worktree's dev servers, and refreshes as they change. **herdr-projects
+1.x** keeps one work board of tasks instead of project folders. The deck
+reads it by itself when `~/.herdr-projects/data/tasks` exists: see
+[herdr-projects 1.x](#herdr-projects-1x) below.
 
 ## Install as a herdr plugin
 
 Needs herdr 0.9.3 or newer, on macOS or Linux.
 
 ```sh
-herdr plugin install FredricW/herdr-deck --ref v0.2.0   # a release
-herdr plugin install FredricW/herdr-deck                # the latest commit on main
+herdr plugin install mariushbrateng/herdr-deck   # this fork, built from source
+herdr plugin install FredricW/herdr-deck --ref v0.2.0   # an upstream release
 ```
 
 herdr runs `scripts/build.sh` as the plugin's build step. When the checkout
@@ -255,6 +375,61 @@ the key itself in neither the config file nor the command line.
 `status = false` in `[linear]` (or `HERDR_DECK_LINEAR_STATUS=false`) turns the
 statuses off, and the deck then never calls Linear.
 
+### Linear view
+
+With a key the deck starts on the **Linear view**: your open Linear issues
+(assigned to you, in every team the key reaches), grouped by state (In
+Progress, In Review, Todo, the backlog; done and canceled ones are left
+out) and sorted by priority within each group. Each row shows the board
+task whose title starts with the issue's ID (`ENG-1656 …`): its ID and
+stage, with `+1` when more tasks have that ID, and its PR. The drawer shows
+the issue: state, priority, labels, project, team, the linked tasks, the
+PR, the description and the newest comments. `V` switches to the tasks and
+back. `m`, or a click on a row's state mark (◐ ○ ◌ …) or on the status in
+the drawer, opens a picker with the issue's team states in Linear's order:
+`↑`/`↓` and `↵`, a state's key (1–9, then letters, so `m3` works as one
+chord) or a click moves the issue there, and `esc` keeps it. `P` then
+`1`–`4` (`0` none) sets its priority, in Linear. Both need a key with write
+access; when Linear refuses a change, the footer says so in red and the
+drawer keeps the reason until a change goes through. The list is read again every minute.
+
+### GitHub and Review views
+
+Next to Linear, the header has two more view tabs, each with its count:
+**GitHub** (your open pull requests) and **Review** (open pull requests
+you are asked to review). `←` and `→` step between Linear, GitHub and
+Review, a click on a tab shows it, and `V` goes to the tasks and back to
+the tab you were on. Both list the PRs by repo, the most recently changed
+first, and need `gh` logged in (`gh auth login`); `github.repos` picks the
+repos (none lists every repo):
+
+```toml
+[github]
+repos = ["acme/webshop", "acme/deploy"]
+```
+
+```
+    PR                                         REVIEW      CI         MERGE       LINKS
+  acme/webshop
+ ▸● #2412 Restrict org admin to own org …      ✓ approved  ✓ passed   ✓ ready     G L
+  ◐ #2420 Guard på migrations (ENG-791)        ◌ waiting   ◐ running  ◌ blocked   G L
+  ● #2398 Stop losing chunks on reconnect      ✕ changes   ✕ failed   ◌ blocked   G
+  ● #2377 Seed data for local development      ◌ waiting   ✓ passed   ✕ conflict  G
+```
+
+Each row shows the PR's number and title (a draft's dim, with `draft`; on
+Review, its author), its review (✓ approved green, ◌ waiting yellow, ✕
+changes requested red, – none needed), its CI (✓ passed green, ◐ running
+yellow, ✕ failed red) and whether it can merge (✓ ready green, ◌ blocked
+by reviews or checks and ↓ behind its base yellow, ✕ conflict red, ◇
+draft). The mark in front sums it up: green when it can merge, red when
+something must be fixed, yellow while it waits. `↵` or `g` opens the PR,
+and `l` the Linear issue its title names, when it is one of yours (`L` in
+LINKS). The drawer shows the PR tab: its checks, why it is not
+merging, review threads, description and comments, read in full while it
+shows. The lists are read again every minute, with two searches in one
+`gh api graphql` request (one point of GitHub's hourly budget of 5,000).
+
 ### GitHub pull requests
 
 When `gh` is installed and logged in (`gh auth login`), the deck reads each
@@ -325,6 +500,42 @@ reads off. The deck only reads GitHub; it never writes.
 The deck reloads when a file in the project folder (or its `threads/`,
 `inbox/` or `.state/`) changes, and every `ui.refresh_interval` (5 seconds by
 default). It never writes there.
+
+## herdr-projects 1.x
+
+herdr-projects 1.0 replaced 0.2's project folders (`PROJECT.md`,
+`TASKS.md`, `threads/`) with a work board: tasks in
+`~/.herdr-projects/data/tasks/<repo>/<n>/` and the commands `list --json`
+and `details <id>`. When the projects root holds such a board and no 0.2
+project folder is named, the deck shows the board (`--project <repo>`
+shows one repo's tasks), and the toggle opens it from any pane, the
+board's own tab too. It only reads: it runs `herdr-projects list --json`
+and `details <id>`, and reads the task folders for the pane, base branch
+and repo root.
+
+- **Lists by priority.** The deck keeps its own priority per task, 1
+  Urgent, 2 High, 3 Medium, 4 Low as in Linear, in its state folder
+  (`priorities.json`): `P` then `1`–`4` sets it, `0` clears it. The lists
+  are the priorities in use, then No priority, then Resolved (folded);
+  within one, what waits on you comes first and finished work last.
+- **Stage in colour.** to do `○`, queued `◌`, working `◐` with the
+  agent's own words and percent, plan ready `◆`, asks you `●`, in review
+  `◇`, ready to approve `★` with the review's worst finding, merging `↻`,
+  failed `✕`, done and merged `✓`. What waits on you is pinned under Needs
+  you.
+- **Critical changes** get a red `⚠`: a critical review tier or finding,
+  a path the repo's AGENTS.md lists under a Critical heading or its
+  INVARIANTS.md names in a `(CRITICAL)` section, or a path such as
+  `auth`, `migrations`, `alembic`, `db`, `security` or `permissions`. The
+  drawer says which.
+- **The drawer's Board section**: stage and progress, what the agent
+  says, priority, why it is critical, the frontend folder it changed
+  (`u` starts the worktree's dev servers through its dev manifest),
+  review verdict and findings, time, tokens and context used, the agent,
+  and the report and review pages (`R` opens them). Files, Commits and the
+  PR tab work as for a 0.2 thread.
+
+`herdr-deck --fake --project board` shows a sample board.
 
 ## Configuration
 
@@ -431,6 +642,7 @@ it).
 | `linear.status` | `--linear-status` | `HERDR_DECK_LINEAR_STATUS` | `true` | `linear_status` |
 | `linear.api_key_command` | `--linear-api-key-command` | `HERDR_DECK_LINEAR_API_KEY_COMMAND` (`LINEAR_API_KEY` holds the key itself and wins) | none | `linear_api_key_command` |
 | `github.enabled` | `--github-enabled` | `HERDR_DECK_GITHUB_ENABLED` | `true` |  |
+| `github.repos` | `--github-repos` | `HERDR_DECK_GITHUB_REPOS` | none |  |
 | `figma.desktop` | `--figma-desktop` | `HERDR_DECK_FIGMA_DESKTOP` | `false` | `figma_desktop` |
 | `browser.reuse_tabs` | `--browser-reuse-tabs` | `HERDR_DECK_BROWSER_REUSE_TABS` | `true` | `reuse_browser_tabs`, `--reuse-browser-tabs`, `HERDR_DECK_REUSE_BROWSER_TABS` |
 | `updates.check` | `--updates-check` | `HERDR_DECK_UPDATES_CHECK` | `true` | `update_check`, `--update-check`, `HERDR_DECK_UPDATE_CHECK` |
@@ -530,6 +742,13 @@ AppleScript (`osascript`). Any other browser (Firefox, for one), a browser
 that is not running, or Linux opens a new tab with `open` or `xdg-open`.
 Turn it off with `reuse_tabs = false` in `[browser]` (or the flag or
 variable above).
+
+Over SSH, `herdr --remote` among others, the deck runs on another machine
+than the one you sit at, and a Linux machine without `$DISPLAY` or
+`$WAYLAND_DISPLAY` has no screen to open a link on. There the deck copies
+the link to your own clipboard instead (OSC 52, which herdr and SSH carry
+back to your terminal) and says so in the status line; paste it in your
+browser.
 
 The same page means:
 
@@ -763,12 +982,14 @@ only threads waiting on you. The deck never marks an item handled.
 |---|---|
 | `j` / `k`, `↓` / `↑` | move; the drawer follows |
 | `space` | fold or unfold the list under the cursor (Backlog and Resolved start folded; see `[ui] folded_lists`) |
+| `←` / `→` | on the view tabs: the previous / next one, Linear, GitHub, Review (see GitHub and Review views) |
+| `V` | switch between the view tabs and the tasks |
 | `[` / `]` | previous / next drawer tab: Overview, Files, Commits, Impact, PR, Log |
 | `tab` | focus the drawer: `j`/`k` move its cursor, `↵` opens what is under it, `tab`/`shift+tab` switch tabs, `esc` returns to the list |
 | `1`–`9` | open the drawer's numbered link (Figma links in the desktop app with `figma.desktop = true`); on Files and Commits, preview the numbered file or commit |
 | `l` `f` `n` `g` | open the row's Linear / Figma / Notion / PR link; with several, pick one with a digit, `a` for all, `d` for the Figma desktop app, the same letter for the first, `esc` to cancel |
 | `o` | open the row's first localhost link whose dev server is running |
-| `enter` | focus the thread's herdr pane |
+| `enter` | focus the thread's herdr pane; on a GitHub or Review row, open the PR |
 | `e` | open the thread's worktree in the editor (VS Code unless configured) |
 | `u` | start the thread's dev servers, detached: the dev manifest's `dev` command, else its services (see Dev servers) |
 | `U` `U` | stop them: the manifest's `stop` command, then every process with a run record |
@@ -806,7 +1027,7 @@ it, a chip to open its link, a changed file or a commit to preview it (the
 total line opens the whole diff in the diff tool), a PR comment to open it
 on GitHub (its `▸` to unfold it), a Log event to act on it (a report shows it, a PR
 event opens the PR, the rest focus the pane), a box, a finding or a selected box's line
-(or a cell next to it) on Impact to select it (a second click opens it), `! N` for the sources, the
+(or a cell next to it) on Impact to select it (a second click opens it), `! N` for the sources, a view tab in the header to show it, the
 other-projects line for the project picker. A click on a row's PR number
 (the PR column, `#2320`, or at 60 columns the start of STATUS) selects the
 row and shows its PR tab; a second click on it, with that tab showing,

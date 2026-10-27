@@ -20,6 +20,7 @@ var samples = map[string]struct{ text, lit, shown, otherLit, other string }{
 	KeyLinearStatus:        {"false", "false", "false", "true", "true"},
 	KeyLinearAPIKeyCommand: {"op read x", `"op read x"`, "op read x", `"pass linear"`, "pass linear"},
 	KeyGitHubEnabled:       {"false", "false", "false", "true", "true"},
+	KeyGitHubRepos:         {"acme/web", `["acme/web"]`, "acme/web", `["acme/api"]`, "acme/api"},
 	KeyFigmaDesktop:        {"true", "true", "true", "false", "false"},
 	KeyReuseTabs:           {"false", "false", "false", "true", "true"},
 	KeyUpdateCheck:         {"false", "false", "false", "true", "true"},

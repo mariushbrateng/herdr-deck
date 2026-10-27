@@ -12,6 +12,8 @@ type keyMap struct {
 	DevUp, DevStop key.Binding
 	Diff           key.Binding
 	Report, Drawer key.Binding
+	Priority, Page key.Binding
+	Move, View     key.Binding
 	Grow, Shrink   key.Binding
 	Sources, Help  key.Binding
 	Settings       key.Binding
@@ -21,6 +23,8 @@ type keyMap struct {
 	Check          key.Binding
 	NextTab        key.Binding
 	PrevTab        key.Binding
+	NextView       key.Binding
+	PrevView       key.Binding
 	Focus, Unfocus key.Binding
 	PageDown       key.Binding
 	PageUp         key.Binding
@@ -43,6 +47,10 @@ func defaultKeys() keyMap {
 		DevStop:   key.NewBinding(key.WithKeys("U")),
 		Diff:      key.NewBinding(key.WithKeys("d")),
 		Report:    key.NewBinding(key.WithKeys("r")),
+		Priority:  key.NewBinding(key.WithKeys("P")),
+		Move:      key.NewBinding(key.WithKeys("m")),
+		View:      key.NewBinding(key.WithKeys("V")),
+		Page:      key.NewBinding(key.WithKeys("R")),
 		Drawer:    key.NewBinding(key.WithKeys("z")),
 		Grow:      key.NewBinding(key.WithKeys("+", "=")),
 		Shrink:    key.NewBinding(key.WithKeys("-")),
@@ -56,6 +64,8 @@ func defaultKeys() keyMap {
 		Check:      key.NewBinding(key.WithKeys("c")),
 		NextTab:    key.NewBinding(key.WithKeys("]")),
 		PrevTab:    key.NewBinding(key.WithKeys("[")),
+		NextView:   key.NewBinding(key.WithKeys("right")),
+		PrevView:   key.NewBinding(key.WithKeys("left")),
 		Focus:      key.NewBinding(key.WithKeys("tab")),
 		Unfocus:    key.NewBinding(key.WithKeys("shift+tab")),
 		PageDown:   key.NewBinding(key.WithKeys("pgdown", "ctrl+d")),

@@ -17,12 +17,12 @@
                                                                                │
  [github] pull requests                                                        │
    github.enabled          true                                        default │
+   github.repos            none                                        default │
                                                                                │
  [figma] Figma links                                                           │
    figma.desktop           false                                       default │
                                                                                │
  [browser] web links                                                           │
    browser.reuse_tabs      true                                        default │
-                                                                               │
 ────────────────────────────────────────────────────────────────────────────────
  ↵ edit  x remove  j k move  esc back  q quit                             v9.9.9

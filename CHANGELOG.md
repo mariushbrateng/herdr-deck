@@ -8,6 +8,36 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- herdr-projects 1.x: the deck reads the work board (`herdr-projects list
+  --json`, `details <id>` and the task folders) when the projects root has
+  one, and the toggle opens it from any pane. Each task shows its stage in
+  its own colour and glyph, its PR, worktree, review findings, time and
+  tokens used, the Linear ID its title starts with, and a red ⚠ when it
+  touches a critical area (review tier, the repo's AGENTS.md or
+  INVARIANTS.md, or paths such as migrations and auth). `P` then `1`–`4`
+  gives a task a priority of the deck's own (1 Urgent … 4 Low); the lists
+  sort by priority, then stage. `R` opens a task's report or review page.
+  0.2 projects work as before.
+- The Linear view, where the deck starts when a Linear API key is set: your
+  open Linear issues by state (under way, to do, backlog), sorted by
+  priority, each with the board task whose title starts with its ID (its
+  ID, stage and PR). The drawer shows the issue: state, priority, labels,
+  project, description and comments. `m`, or a click on an issue's state
+  mark or its status in the drawer, opens a picker with its team's states
+  (↑↓ and ↵, a state's key, or a click) and moves it there in Linear; `P`
+  sets its priority. When Linear refuses a change, as with a read-only
+  key, the deck says so in red. `V` switches to the tasks.
+- GitHub and Review views, next to Linear in the header's view tabs, each
+  with its count: your open pull requests, and the ones you are asked to
+  review, by repo. Each shows its review (approved, waiting, changes
+  requested), CI (passed, running, failed) and whether it can merge
+  (ready, blocked, behind, conflict, draft) in green, yellow and red. `←`
+  and `→` (or a click on a tab) switch between Linear, GitHub and Review;
+  `↵` or `g` opens the PR, and the drawer shows its PR tab. The new
+  `github.repos` setting picks the repos. Read through `gh` every minute.
+
 ## [0.1.9] - 2026-10-20
 
 ### Added

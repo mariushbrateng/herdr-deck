@@ -1,0 +1,25 @@
+{
+  "data": {
+    "rateLimit": {"remaining": 4987, "resetAt": "2026-10-02T15:00:00Z"},
+    "mine": {"nodes": [
+      {"number": 2320, "title": "Checkout: keep the basket on reload ", "url": "https://github.com/acme/webshop/pull/2320",
+       "updatedAt": "2026-10-02T14:30:00Z", "state": "OPEN", "isDraft": false, "mergeable": "MERGEABLE",
+       "mergeStateStatus": "BLOCKED", "reviewDecision": "REVIEW_REQUIRED",
+       "repository": {"nameWithOwner": "acme/webshop"}, "author": {"__typename": "User", "login": "alex"},
+       "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]}},
+      {"number": 41, "title": "Deploy the worker to eu-north", "url": "https://github.com/acme/deploy/pull/41",
+       "updatedAt": "2026-10-02T13:00:00Z", "state": "OPEN", "isDraft": true, "mergeable": "CONFLICTING",
+       "mergeStateStatus": "DIRTY", "reviewDecision": null,
+       "repository": {"nameWithOwner": "acme/deploy"}, "author": {"__typename": "User", "login": "alex"},
+       "commits": {"nodes": [{"commit": {"statusCheckRollup": null}}]}},
+      {}
+    ]},
+    "review": {"nodes": [
+      {"number": 2333, "title": "Search: rank exact matches first", "url": "https://github.com/acme/webshop/pull/2333",
+       "updatedAt": "2026-10-02T12:00:00Z", "state": "OPEN", "isDraft": false, "mergeable": "UNKNOWN",
+       "mergeStateStatus": "UNKNOWN", "reviewDecision": "CHANGES_REQUESTED",
+       "repository": {"nameWithOwner": "acme/webshop"}, "author": null,
+       "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "PENDING"}}}]}}
+    ]}
+  }
+}

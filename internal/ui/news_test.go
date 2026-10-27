@@ -117,7 +117,7 @@ func TestNewsKey(t *testing.T) {
 	}
 	m, _ = press(m, keys("?z")...)
 	pgdn := tea.KeyPressMsg{Code: tea.KeyPgDown}
-	m, _ = press(m, pgdn, pgdn, pgdn, pgdn)
+	m, _ = press(m, pgdn, pgdn, pgdn, pgdn, pgdn)
 	if sc := screen(m); !strings.Contains(sc, "what's new") {
 		t.Errorf("help does not list w:\n%s", sc)
 	}

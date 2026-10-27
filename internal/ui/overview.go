@@ -95,8 +95,16 @@ func (m Model) overview(d *drawer, r row, links []deck.Link, h int) {
 			}
 		}})
 	}
+	if hasThread && t.Board != nil {
+		// On a board the task's own state comes first.
+		secs = append([]sec{{name: "Board", style: phaseStyle(t.Board.Phase).Bold(true), body: func() { m.boardSection(d, t) }}}, secs...)
+	}
 	if hasThread {
-		secs = append(secs, sec{name: "Thread", style: bold, body: func() { m.threadSection(d, r, t) }})
+		name := "Thread"
+		if t.Board != nil {
+			name = "Worktree"
+		}
+		secs = append(secs, sec{name: name, style: bold, body: func() { m.threadSection(d, r, t) }})
 	}
 
 	local := func(l deck.Link) bool { return l.Kind == deck.LinkLocalhost }
@@ -476,7 +484,7 @@ func (m Model) threadSection(d *drawer, r row, t deck.Thread) {
 		d.field("branch", false, words(t.Branch, plain))
 	}
 	if t.Report != "" {
-		g := group{sep: " ", items: []item{span("threads/"+t.ID+".md", plain)}}
+		g := group{sep: " ", items: []item{span(reportName(t), plain)}}
 		if !t.LastReportChange.IsZero() {
 			g.items = append(g.items, span("·", dim), span("changed "+m.clock(t.LastReportChange, false), dim))
 		}

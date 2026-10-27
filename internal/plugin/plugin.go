@@ -19,6 +19,7 @@ import (
 
 	"github.com/FredricW/herdr-deck/internal/config"
 	"github.com/FredricW/herdr-deck/internal/project"
+	"github.com/FredricW/herdr-deck/internal/source/board"
 	"github.com/FredricW/herdr-deck/internal/source/herdr"
 )
 
@@ -151,6 +152,10 @@ func Toggle(ctx context.Context, h Host, env Env, focused string) error {
 		}
 	}
 	slug := paneSlug(pane, env)
+	if board.Use(env.Root, slug) {
+		// herdr-projects 1.x: any tab's deck shows the board.
+		slug = board.Slug
+	}
 	if slug == "" {
 		_ = h.Notify(ctx, "Deck: no project here", "Toggle it in a herdr-projects project's pane, or set "+project.EnvProject+".")
 		return fmt.Errorf("toggle: pane %s is not in a herdr-projects project", pane.ID)
@@ -196,7 +201,11 @@ func open(ctx context.Context, h Host, env Env, target, slug string, focus bool)
 	if c := env.Getenv(config.EnvPath); c != "" {
 		vars[config.EnvPath] = c
 	}
-	deck, err := h.Open(ctx, Open{Target: target, Cwd: filepath.Join(env.Root, slug), Env: vars, Focus: focus})
+	cwd := filepath.Join(env.Root, slug)
+	if slug == board.Slug {
+		cwd = env.Root
+	}
+	deck, err := h.Open(ctx, Open{Target: target, Cwd: cwd, Env: vars, Focus: focus})
 	if err != nil {
 		return "", err
 	}

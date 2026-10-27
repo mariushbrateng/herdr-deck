@@ -14,7 +14,7 @@
 
 ─ Keys ─────────────────────────────────────────────────────────────────────────
  j k        move; the drawer follows                                           ┃
- space      fold or unfold the list under the cursor                           ┃
+ space      fold or unfold the list under the cursor                           │
  [ ]        previous / next tab: Overview, Files, Commits, Impact, PR, Log     │
  tab        focus the drawer: j k move in it, ↵ opens, tab switches tabs, esc  │
             returns                                                            │

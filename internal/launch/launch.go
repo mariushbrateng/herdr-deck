@@ -303,3 +303,19 @@ func shellQuote(s string) string {
 	r := strings.NewReplacer(`'`, `'\''`, `\`, `'\\'`)
 	return "'" + r.Replace(s) + "'"
 }
+
+// CanOpen reports whether URL can open a link on the screen the user looks
+// at, on goos with the environment getenv. Over SSH (herdr --remote among
+// others) the deck runs on another machine than the user's, and a Linux or
+// BSD machine without $DISPLAY or $WAYLAND_DISPLAY has no screen; the deck
+// then copies links instead.
+func CanOpen(goos string, getenv func(string) string) bool {
+	if getenv("SSH_CONNECTION") != "" || getenv("SSH_TTY") != "" {
+		return false
+	}
+	switch goos {
+	case "darwin", "windows":
+		return true
+	}
+	return getenv("DISPLAY") != "" || getenv("WAYLAND_DISPLAY") != ""
+}

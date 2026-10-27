@@ -354,3 +354,31 @@ func TestOpenPassesConfigPath(t *testing.T) {
 		t.Errorf("opened %+v, want HERDR_DECK_CONFIG passed on", h.opened)
 	}
 }
+
+// On a herdr-projects 1.x home folder any pane's toggle opens the board's
+// deck, started in the home folder; a 0.2 project folder beside it keeps
+// its own deck.
+func TestToggleBoard(t *testing.T) {
+	root := projectsRoot(t)
+	if err := os.MkdirAll(filepath.Join(root, "data", "tasks", "webapp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name, cwd, want, wantCwd string
+	}{
+		{"a pane anywhere", "/src/elsewhere", "board", root},
+		{"the board's own pane", filepath.Join(root, "data", "coordinator"), "board", root},
+		{"a 0.2 project folder", filepath.Join(root, "admin-rebuild"), "admin-rebuild", filepath.Join(root, "admin-rebuild")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &fakeHost{st: herdr.State{Panes: []herdr.Pane{{ID: "w1:p1", WorkspaceID: "w1", TabID: "w1:t1", Cwd: tt.cwd}}}}
+			env := Env{Getenv: func(string) string { return "" }, Root: root}
+			if err := Toggle(context.Background(), h, env, "w1:p1"); err != nil {
+				t.Fatal(err)
+			}
+			if len(h.opened) != 1 || h.opened[0].Env["HERDR_DECK_PROJECT"] != tt.want || h.opened[0].Cwd != tt.wantCwd {
+				t.Errorf("opened %+v, want %q in %s", h.opened, tt.want, tt.wantCwd)
+			}
+		})
+	}
+}

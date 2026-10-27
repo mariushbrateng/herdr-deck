@@ -1,0 +1,30 @@
+ Board   Linear (7)   GitHub (6)   Review (2)                     ● 4 needs you  ◐ 1  ◇ 1  ○ 3  ✉ 0
+────────────────────────────────────────────────────────────────────────────────────────────────────
+    PR                                                      REVIEW      CI         MERGE       LINKS
+  acme/webshop
+ ▸◐ #2431 sam Search: rank exact matches first              ◌ waiting   ✓ passed   ◌ blocked   G
+
+  acme/deploy
+  ◐ #90 ana Rotate the staging certificates                 ◌ waiting   ◐ running  … checking  G
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Search: rank exact matches first                                    ◌ waiting  ✓ passed  ◌ blocked
+ acme/webshop · #2431 · sam · updated 40m ago
+
+   PR                                                                                      ↓ 1 more
+
+ [1 #2431]                                                                                         ┃
+ reading the description and comments…                                                             ┃
+                                                                                                   ┃
+ ── Status ──                                                                                      ┃
+ open · review required                                                                            ┃
+ ⚠ blocked: review required                                                                        ┃
+ ✓ checks passed · reading them…                                                                   │
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↵ g open the PR  tab drawer  ←→ tabs  V tasks  ? help                                        v9.9.9

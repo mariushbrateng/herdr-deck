@@ -41,6 +41,10 @@ type Options struct {
 	// replace both so nothing is ever opened.
 	OpenURL    func(url string) error
 	OpenEditor func(path string) error
+	// CopyLinks puts a link on the clipboard of the terminal the user sits
+	// at (OSC 52, which herdr --remote and SSH carry back) instead of
+	// opening it, for a deck on a machine with no screen of its own.
+	CopyLinks bool
 	// FigmaDesktop opens Figma links in the desktop app (their figma://
 	// rewrite) wherever a key or click opens a link, not only after d.
 	FigmaDesktop bool
@@ -51,6 +55,21 @@ type Options struct {
 	// (`herdr-projects open`), for the project picker when none runs. Tests
 	// replace it so no coordinator is ever started.
 	OpenProject func(slug string) error
+	// SetPriority gives a herdr-projects 1.x board task the deck's own
+	// priority, 1–4, or none with 0 (keys 1–4 and 0). Nil turns the keys
+	// off.
+	SetPriority func(t deck.Thread, prio int) error
+	// SetIssueState moves a Linear issue to the workflow state with that
+	// ID (m on the Linear view), SetIssuePriority gives it Linear's
+	// priority 0–4 (P). Nil turns the keys off.
+	SetIssueState    func(is deck.LinearIssue, stateID string) error
+	SetIssuePriority func(is deck.LinearIssue, prio int) error
+	// LinearView starts the deck on the Linear view (V switches).
+	LinearView bool
+	// Relist sorts board tasks and groups them into lists, as the board
+	// source does, for a priority shown before the reload confirms it.
+	// Nil leaves the lists until then.
+	Relist func(threads []deck.Thread) []deck.TaskList
 	// Diff reads what a thread's worktree changed against its base. It
 	// runs off the UI goroutine when the selection moves to another
 	// thread and on every reload. Nil shows no Files section.
@@ -233,7 +252,22 @@ type Model struct {
 	desktop   bool          // the Figma chooser opens the desktop app
 	status    string        // a one-off message in the footer
 	stopArmed string        // the thread U was pressed on once; a second U stops it
-	notice    string        // "Updated to …", until the first key or click
+	prioArmed string        // the board task P was pressed on; the next key sets its priority
+	// view is what the list shows: the tasks, or a view tab (Linear,
+	// GitHub, Review), lastTab the view tab V goes back to.
+	view, lastTab viewKind
+	// moveArmed is the Linear issue the state picker is open on (m, or
+	// a click on its state), moveSel the picker's selected state and
+	// moveOff its first state shown. issuePrioArmed is the issue P was
+	// pressed on: the next key sets its priority.
+	moveArmed, issuePrioArmed string
+	moveSel, moveOff          int
+	// failed is the status that says Linear refused a change, drawn red
+	// while it is the status; issueFail is the refusal, shown in that
+	// issue's drawer until a change to it goes through.
+	failed    string
+	issueFail issueFailure
+	notice    string // "Updated to …", until the first key or click
 
 	width, height int
 	light         bool // the terminal's background is light
@@ -345,6 +379,10 @@ func New(snap deck.Snapshot, opt Options) Model {
 		loaded:         opt.Load == nil,
 		loading:        opt.Load != nil, // Init starts the first load
 		frac:           opt.DrawerHeight,
+		lastTab:        viewLinear,
+	}
+	if opt.LinearView {
+		m.view = viewLinear
 	}
 	if opt.DrawerKept > 0 && opt.DrawerKept < 1 {
 		m.frac = opt.DrawerKept
@@ -364,7 +402,7 @@ func (m *Model) SetSnapshot(snap deck.Snapshot) {
 		selKey = r.key
 	}
 	m.snap = snap
-	m.rows = buildRows(snap, m.folds, m.opt.FoldedLists)
+	m.rows = m.buildRows(snap)
 
 	switch {
 	case !m.moved:
@@ -402,6 +440,18 @@ func (m *Model) SetSnapshot(snap deck.Snapshot) {
 		m.sourcesSeen = true
 	}
 	m.ensureVisible()
+}
+
+// buildRows lays out the list the model shows: a view tab's or the
+// tasks'.
+func (m Model) buildRows(snap deck.Snapshot) []row {
+	switch m.view {
+	case viewLinear:
+		return buildIssueRows(snap, m.folds, m.opt.FoldedLists)
+	case viewGitHub, viewReview:
+		return buildPullRows(snap, m.view, m.folds, m.opt.FoldedLists)
+	}
+	return buildRows(snap, m.folds, m.opt.FoldedLists)
 }
 
 // homeRow is where the cursor rests on its own: the first row that needs the
@@ -600,6 +650,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.patchAgain = false
 			return m, m.readPatch(false)
 		}
+	case issueSetMsg:
+		if msg.err != nil {
+			m.status = "could not change " + msg.id + ": " + msg.err.Error()
+			m.failed = m.status
+			m.issueFail = issueFailure{id: msg.id, msg: msg.err.Error()}
+		} else {
+			m.status = msg.id + ": " + msg.what + " in Linear"
+			if m.issueFail.id == msg.id {
+				m.issueFail = issueFailure{}
+			}
+		}
+		return m, m.refresh()
+	case prioritySetMsg:
+		if msg.err != nil {
+			m.status = "could not set the priority of " + msg.id + ": " + msg.err.Error()
+		} else if msg.prio == 0 {
+			m.status = msg.id + ": no priority"
+		} else {
+			m.status = fmt.Sprintf("%s: P%d %s", msg.id, msg.prio, prioName(msg.prio))
+		}
+		return m, m.refresh()
 	case openedMsg:
 		verb, past := "open", "opened"
 		if msg.verb != "" {
@@ -904,6 +975,8 @@ func (m *Model) act(a action) tea.Cmd {
 		m.toggleComment(a.n)
 	case actFinding, actFindMore, actBox, actSite, actEdge:
 		return m.impactAct(a)
+	case actState:
+		m.armMove()
 	}
 	return nil
 }
@@ -942,6 +1015,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.stopArmed = ""
 	if m.pick.open {
 		return m, m.pickerKey(msg)
+	}
+	if cmd, done := m.issueKey(msg); done {
+		return m, cmd
+	}
+	if cmd, done := m.priorityKey(msg); done {
+		return m, cmd
 	}
 	if m.mode == modeSettings {
 		if cmd, done := m.settingsKey(msg); done {
@@ -1040,6 +1119,22 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.diffKeyPressed()
 	case key.Matches(msg, m.keys.Report):
 		m.toggleReport()
+	case key.Matches(msg, m.keys.Priority):
+		if is, ok := m.selectedIssue(); ok {
+			m.armIssuePriority(is)
+		} else {
+			m.armPriority()
+		}
+	case key.Matches(msg, m.keys.Move):
+		m.armMove()
+	case key.Matches(msg, m.keys.View):
+		m.toggleView()
+	case !m.dfocus && m.view != viewTasks && key.Matches(msg, m.keys.PrevView):
+		m.stepView(-1)
+	case !m.dfocus && m.view != viewTasks && key.Matches(msg, m.keys.NextView):
+		m.stepView(1)
+	case key.Matches(msg, m.keys.Page):
+		return m, m.openBoardPage()
 	case key.Matches(msg, m.keys.Drawer):
 		prev, _ := m.impactStopAct()
 		m.size = (m.size + 1) % 3
@@ -1114,7 +1209,7 @@ func (m *Model) toggleFold() {
 		return
 	}
 	m.folds[r.list] = !r.folded
-	m.rows = buildRows(m.snap, m.folds, m.opt.FoldedLists)
+	m.rows = m.buildRows(m.snap)
 	m.ensureVisible()
 }
 
@@ -1282,6 +1377,16 @@ func (m *Model) openURL(url, what string) tea.Cmd {
 		}
 		return nil
 	}
+	return m.openOrCopy(url, what)
+}
+
+// openOrCopy opens url, or copies it with CopyLinks, and says so in the status
+// line.
+func (m *Model) openOrCopy(url, what string) tea.Cmd {
+	if m.opt.CopyLinks {
+		m.status = "copied the link to " + what + " (no browser on this machine)"
+		return tea.SetClipboard(url)
+	}
 	open := m.opt.OpenURL
 	if open == nil {
 		m.status = "opening links is off: " + url
@@ -1371,6 +1476,9 @@ func (m *Model) focusPane() tea.Cmd {
 	r, _ := m.selected()
 	t, ok := r.thread()
 	switch {
+	case r.pull != nil:
+		// A PR has no pane: ↵ opens it, as g does.
+		return m.linkKey(deck.LinkGitHub)
 	case r.kind != rowWork:
 		m.status = "no pane on this row"
 		return nil
@@ -1406,6 +1514,9 @@ func (m *Model) handleClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 	if m.pick.open {
 		return *m, m.pickClick(mouse.Y)
 	}
+	if m.moveArmed != "" {
+		return *m, m.statePickClick(mouse)
+	}
 	l := m.layout()
 	if k, s, top := m.barAt(l, mouse); k != barNone {
 		// A scrollbar: a press grabs the thumb, or jumps there on the
@@ -1427,6 +1538,8 @@ func (m *Model) handleClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		m.openPicker()
 	case mouse.Y == 0 && mouse.X >= l.bang.x0 && mouse.X < l.bang.x1:
 		m.toggleMode(modeSources)
+	case mouse.Y == 0 && m.viewTabAt(mouse.X) != viewTasks:
+		m.showView(m.viewTabAt(mouse.X))
 	case (m.preview || m.edgeShown()) && mouse.Y >= l.listTop-1 && mouse.Y < l.listTop+l.listH:
 		// The preview or an edge's code has the list's place: a click
 		// there does nothing.
@@ -1438,6 +1551,7 @@ func (m *Model) handleClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		if x0, x1, ok := m.prCell(m.rows[i]); ok && mouse.X >= x0 && mouse.X < x1 {
 			return *m, m.showPRTab(i)
 		}
+		onMark := m.rows[i].issue != nil && mouse.X >= markX && mouse.X <= markX+1
 		if i != m.cursor {
 			m.dcur = 0
 		}
@@ -1446,6 +1560,9 @@ func (m *Model) handleClick(mouse tea.Mouse) (tea.Model, tea.Cmd) {
 		m.setMode(modeRow)
 		if m.rows[i].kind == rowHeading {
 			m.toggleFold()
+		}
+		if onMark {
+			m.armMove()
 		}
 	case l.drawer != nil && l.tabY >= 0 && mouse.Y == l.tabY:
 		m.focusDrawer()

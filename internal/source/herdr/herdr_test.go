@@ -32,15 +32,22 @@ type request struct {
 	Params json.RawMessage `json:"params"`
 }
 
-func newServer(t *testing.T, handle func(req request, w *bufio.Writer) bool) *server {
+// shortDir is a temporary folder with a short path: Unix socket paths are
+// limited to about 100 bytes, and t.TempDir adds the test's name, which
+// a long $TMPDIR cannot spare.
+func shortDir(t *testing.T) string {
 	t.Helper()
-	// A short path: Unix socket paths are limited to about 100 bytes.
 	dir, err := os.MkdirTemp("", "hd")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	s := &server{path: filepath.Join(dir, "s.sock")}
+	return dir
+}
+
+func newServer(t *testing.T, handle func(req request, w *bufio.Writer) bool) *server {
+	t.Helper()
+	s := &server{path: filepath.Join(shortDir(t), "s.sock")}
 	ln, err := net.Listen("unix", s.path)
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +195,7 @@ func TestFocus(t *testing.T) {
 }
 
 func TestNoSocket(t *testing.T) {
-	c := Client{Socket: filepath.Join(t.TempDir(), "gone.sock")}
+	c := Client{Socket: filepath.Join(shortDir(t), "gone.sock")}
 	if _, err := c.Snapshot(context.Background()); !errors.Is(err, ErrNoSocket) {
 		t.Errorf("Snapshot without a socket: %v", err)
 	}
@@ -307,7 +314,7 @@ func TestApplyLiveStatus(t *testing.T) {
 }
 
 func TestApplyWithoutHerdr(t *testing.T) {
-	r := NewReader(filepath.Join(t.TempDir(), "gone.sock"))
+	r := NewReader(filepath.Join(shortDir(t), "gone.sock"))
 	snap := projectSnap()
 	r.Apply(context.Background(), &snap, t0)
 	if snap.Herdr || len(snap.Missing) != 1 || !strings.HasPrefix(snap.Missing[0], "herdr socket: not found") {
@@ -398,7 +405,7 @@ func TestWatchWithoutSocket(t *testing.T) {
 	var calls atomic.Int32
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	Client{Socket: filepath.Join(t.TempDir(), "gone.sock")}.Watch(ctx, WatchOptions{Debounce: 10 * time.Millisecond, Poll: 10 * time.Millisecond, Retry: 20 * time.Millisecond}, func() { calls.Add(1) })
+	Client{Socket: filepath.Join(shortDir(t), "gone.sock")}.Watch(ctx, WatchOptions{Debounce: 10 * time.Millisecond, Poll: 10 * time.Millisecond, Retry: 20 * time.Millisecond}, func() { calls.Add(1) })
 	if n := calls.Load(); n != 0 {
 		t.Errorf("changed was called %d times without a socket", n)
 	}

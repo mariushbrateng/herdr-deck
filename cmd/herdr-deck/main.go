@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/FredricW/herdr-deck/internal/project"
 	"github.com/FredricW/herdr-deck/internal/restart"
 	"github.com/FredricW/herdr-deck/internal/source/arch"
+	"github.com/FredricW/herdr-deck/internal/source/board"
 	"github.com/FredricW/herdr-deck/internal/source/dev"
 	"github.com/FredricW/herdr-deck/internal/source/diff"
 	"github.com/FredricW/herdr-deck/internal/source/fake"
@@ -123,6 +125,7 @@ func run(args []string) error {
 		OpenURL: func(url string) error {
 			return launch.Browser{Reuse: cur.Load().ReuseTabs}.OpenURL(url)
 		},
+		CopyLinks:    !launch.CanOpen(runtime.GOOS, os.Getenv),
 		FigmaDesktop: cfg.FigmaDesktop,
 		OpenEditor: func(path string) error {
 			ed := cur.Load().Editor
@@ -164,6 +167,16 @@ func run(args []string) error {
 			slug = "admin-rebuild"
 		}
 		snap := fake.Snapshot(slug, time.Now())
+		if slug == fake.BoardSlug {
+			// A herdr-projects 1.x board: --fake --project board.
+			snap = fake.Board(time.Now())
+			snap.Mine = fake.Mine(time.Now())
+			snap.PRs = fake.PRs(time.Now())
+			opt.LinearView = true
+			// The sample's issues are not in Linear: m and P only say so.
+			opt.SetIssueState = func(deck.LinearIssue, string) error { return nil }
+			opt.SetIssuePriority = func(deck.LinearIssue, int) error { return nil }
+		}
 		fake.GitHub(&snap, time.Now())
 		opt.CheckLog = fake.CheckLog
 		snap.Missing = append(snap.Missing, cfg.Problems...)
@@ -197,16 +210,40 @@ func run(args []string) error {
 	root := cfg.ProjectsRoot
 	cwd, _ := os.Getwd()
 	slug, err := project.Slug(*slugFlag, os.Getenv, cwd, root)
-	if err != nil {
+	// herdr-projects 1.x keeps one board in the home folder in place of
+	// 0.2's project folders: the deck shows it, or one repo of it.
+	onBoard := board.Use(root, slug)
+	if err != nil && !onBoard {
 		return err
 	}
 
+	diffs := &diff.Reader{}
 	src := live.New(root, slug, cfg.LinearWorkspace)
+	if onBoard {
+		b := &board.Reader{Home: root, Repo: board.RepoOf(root, slug), Diff: diffs.Read, Rules: &board.Rules{}}
+		if dir := config.StateDir(os.Getenv); dir != "" {
+			b.Priorities = &board.Priorities{Path: filepath.Join(dir, board.PriorityFile)}
+			opt.SetPriority = func(t deck.Thread, prio int) error {
+				if t.Board == nil {
+					return errors.New("not a board task")
+				}
+				return b.Priorities.Set(t.Board.ID, prio)
+			}
+		}
+		opt.Relist = func(threads []deck.Thread) []deck.TaskList {
+			board.Sort(threads)
+			return board.Lists(threads)
+		}
+		src.Board = b
+		slug = board.Slug
+	}
 	src.Herdr = herdr.NewReader(client.Socket)
 	devs := dev.NewReader()
 	devs.State = config.DevStateDir(os.Getenv)
 	src.Dev = devs
-	src.Roster = projects.NewRoster(root)
+	if !onBoard {
+		src.Roster = projects.NewRoster(root)
+	}
 	go plugin.MarkSelf(context.Background(), plugin.Socket{Client: client}, os.Getenv, slug)
 
 	// The program changes when a failed restart starts the deck again.
@@ -219,12 +256,38 @@ func run(args []string) error {
 	// Loads run one at a time, so this is the only place src changes:
 	// it takes the latest settings before each read.
 	var lin *linear.Reader
+	// linRef is lin for the Linear view's changes, which run off the
+	// load's goroutine.
+	var linRef atomic.Pointer[linear.Reader]
+	linearOn := func() (*linear.Reader, error) {
+		if r := linRef.Load(); r != nil && cur.Load().LinearStatus {
+			return r, nil
+		}
+		return nil, errors.New("Linear is off")
+	}
+	opt.SetIssueState = func(is deck.LinearIssue, stateID string) error {
+		r, err := linearOn()
+		if err != nil {
+			return err
+		}
+		return r.SetState(context.Background(), is, stateID)
+	}
+	opt.SetIssuePriority = func(is deck.LinearIssue, prio int) error {
+		r, err := linearOn()
+		if err != nil {
+			return err
+		}
+		return r.SetPriority(context.Background(), is, prio)
+	}
+	// With a key the deck starts on the Linear view; V shows the tasks.
+	opt.LinearView = cfg.LinearStatus && linear.NewReader(os.Getenv, cfg.LinearAPIKeyCommand).Key.Configured()
 	gh := &github.Reader{OnUpdate: refresh}
 	opt.Load = func(ctx context.Context) deck.Snapshot {
 		c := cur.Load()
 		src.GitHub = nil
 		if c.GitHubEnabled {
 			src.GitHub = gh
+			gh.SetRepos(c.GitHubRepos)
 		}
 		src.LinearWorkspace = c.LinearWorkspace
 		src.Linear = nil
@@ -233,6 +296,7 @@ func run(args []string) error {
 				lin = linear.NewReader(os.Getenv, c.LinearAPIKeyCommand)
 				// A background fetch finished: reload to show its statuses.
 				lin.OnUpdate = refresh
+				linRef.Store(lin)
 			}
 			src.Linear = lin
 		}
@@ -254,10 +318,11 @@ func run(args []string) error {
 		}
 	}
 	opt.CheckLog = gh.Log
-	opt.OpenProject = func(slug string) error {
-		return projects.New(root, slug).Open(context.Background())
+	if !onBoard {
+		opt.OpenProject = func(slug string) error {
+			return projects.New(root, slug).Open(context.Background())
+		}
 	}
-	diffs := &diff.Reader{}
 	opt.Diff = diffs.Read
 	opt.Patch = diffs.ReadPatch
 	opt.Commits = diffs.ReadCommits
@@ -268,7 +333,10 @@ func run(args []string) error {
 	if cfg.ArchEnabled {
 		archs := &arch.Reader{Tests: cfg.ArchTests}
 		opt.Arch = archs.Read
-		opt.OpenImpact = impactPane("arch", "--project", slug)
+		// `herdr-deck arch` finds its thread in a 0.2 project folder.
+		if !onBoard {
+			opt.OpenImpact = impactPane("arch", "--project", slug)
+		}
 	}
 	opt.StartDev = func(t deck.Thread) (string, error) { return devs.Up(context.Background(), t) }
 	opt.StopDev = func(t deck.Thread) (string, error) { return devs.Stop(context.Background(), t) }
@@ -295,7 +363,11 @@ func run(args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// Without a watch (no project folder yet) the tick still reloads.
-	_ = live.Watch(ctx, src.Projects.Dir(), debounce, refresh)
+	if onBoard {
+		_ = live.WatchBoard(ctx, src.Board.TasksDir(), debounce, refresh)
+	} else {
+		_ = live.Watch(ctx, src.Projects.Dir(), debounce, refresh)
+	}
 	// herdr's events reload too; without herdr this waits quietly.
 	go client.Watch(ctx, herdr.WatchOptions{}, refresh)
 

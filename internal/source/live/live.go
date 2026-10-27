@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/FredricW/herdr-deck/internal/deck"
+	"github.com/FredricW/herdr-deck/internal/source/board"
 	"github.com/FredricW/herdr-deck/internal/source/dev"
 	"github.com/FredricW/herdr-deck/internal/source/github"
 	"github.com/FredricW/herdr-deck/internal/source/herdr"
@@ -36,11 +37,15 @@ type Source struct {
 	// one.
 	Linear *linear.Reader
 	// GitHub reads thread PRs from GitHub through gh, beyond the ticker's
-	// summary; nil leaves PRs as herdr-projects' ticker saw them.
+	// summary, and the user's own open PRs for the GitHub views; nil
+	// leaves PRs as herdr-projects' ticker saw them.
 	GitHub *github.Reader
 	// Roster reads every project under the projects root for the project
 	// picker; nil leaves Snapshot.Projects empty.
 	Roster *projects.Roster
+	// Board, when set, reads a herdr-projects 1.x board in place of the
+	// 0.2 project folder (Projects) and its TASKS.md.
+	Board *board.Reader
 	// Now stamps Snapshot.ReadAt; nil means time.Now.
 	Now func() time.Time
 }
@@ -54,6 +59,9 @@ func New(root, slug, linearWorkspace string) Source {
 // it never fails: unreadable sources are named in Snapshot.Missing. A missing
 // TASKS.md is not a missing source; the project simply has no tasks yet.
 func (s Source) Read(ctx context.Context) deck.Snapshot {
+	if s.Board != nil {
+		return s.readBoard(ctx)
+	}
 	snap := s.Projects.Read(ctx)
 	dir := s.Projects.Dir()
 	threadText := tasks.ThreadFiles(filepath.Join(dir, "threads"))
@@ -77,6 +85,7 @@ func (s Source) Read(ctx context.Context) deck.Snapshot {
 
 	if s.Linear != nil {
 		s.Linear.Apply(&snap)
+		s.Linear.ApplyMine(&snap)
 	}
 	// With a key, Linear gives the URLs; until its first answer arrives
 	// the IDs wait for them rather than missing a workspace.
@@ -97,6 +106,7 @@ func (s Source) Read(ctx context.Context) deck.Snapshot {
 	if s.GitHub != nil {
 		// After herdr, which may resolve a thread: those are not read.
 		s.GitHub.Apply(&snap)
+		s.GitHub.ApplyMine(&snap)
 	}
 	if s.Dev != nil {
 		// After herdr: its workspace port token is the fallback port.
@@ -107,6 +117,34 @@ func (s Source) Read(ctx context.Context) deck.Snapshot {
 		if s.Herdr != nil {
 			s.Herdr.ApplyProjects(snap.Projects, snap.Project.Slug, snap.ReadAt)
 		}
+	}
+	return snap
+}
+
+// readBoard reads the herdr-projects 1.x board and lays the live sources
+// over it as Read does for a 0.2 project.
+func (s Source) readBoard(ctx context.Context) deck.Snapshot {
+	b := *s.Board
+	b.LinearWorkspace = s.LinearWorkspace
+	snap := b.Read(ctx)
+	if s.Linear != nil {
+		s.Linear.Apply(&snap)
+		s.Linear.ApplyMine(&snap)
+	}
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	snap.ReadAt = now()
+	if s.Herdr != nil {
+		s.Herdr.Apply(ctx, &snap, snap.ReadAt)
+	}
+	if s.GitHub != nil {
+		s.GitHub.Apply(&snap)
+		s.GitHub.ApplyMine(&snap)
+	}
+	if s.Dev != nil {
+		s.Dev.Apply(ctx, &snap)
 	}
 	return snap
 }

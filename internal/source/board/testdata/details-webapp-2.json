@@ -1,0 +1,1 @@
+{"task":{"id":"WEB-2","description":"Seed data. Linear: https://linear.app/acme/issue/ENG-890/seed"},"report":{"file":"report.md","link":"http://127.0.0.1:1/webapp/2/report/report.md"},"pr":null,"worktree":null,"limits":{"time":{"usedMs":600000},"tokens":{"used":1234}}}

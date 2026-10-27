@@ -92,6 +92,9 @@ func (f File) values() map[string]string {
 	}
 	if t := f.GitHub; t != nil {
 		boolean(KeyGitHubEnabled, t.Enabled)
+		if t.Repos != nil {
+			out[KeyGitHubRepos] = ListText(*t.Repos)
+		}
 	}
 	if t := f.Figma; t != nil {
 		boolean(KeyFigmaDesktop, t.Desktop)
@@ -145,6 +148,7 @@ const (
 	KeyLinearStatus        = "linear.status"
 	KeyLinearAPIKeyCommand = "linear.api_key_command"
 	KeyGitHubEnabled       = "github.enabled"
+	KeyGitHubRepos         = "github.repos"
 	KeyFigmaDesktop        = "figma.desktop"
 	KeyReuseTabs           = "browser.reuse_tabs"
 	KeyUpdateCheck         = "updates.check"
@@ -236,6 +240,9 @@ var Specs = []Spec{
 	{Key: KeyGitHubEnabled, Kind: KindBool, Flag: "--github-enabled", Env: EnvGitHubEnabled,
 		Default: "true",
 		Help:    "read thread PRs from GitHub through gh: why a PR is not merging, failing check logs, review threads"},
+	{Key: KeyGitHubRepos, Kind: KindList, Flag: "--github-repos", Env: EnvGitHubRepos,
+		Default: NoLists,
+		Help:    "repos the GitHub and Review views list your open PRs from, owner/name, comma-separated; " + NoLists + " lists them from every repo"},
 	{Key: KeyFigmaDesktop, Kind: KindBool, Flag: "--figma-desktop", Env: EnvFigmaDesktop, Old: "figma_desktop",
 		Default: "false",
 		Help:    "open Figma links in the Figma desktop app instead of the browser"},
@@ -344,6 +351,11 @@ func Check(key, text string) error {
 	case KindList:
 		if _, err := ParseList(text); err != nil {
 			return err
+		}
+		if key == KeyGitHubRepos {
+			if _, err := parseRepos(text); err != nil {
+				return err
+			}
 		}
 	case KindFraction:
 		if _, err := parseFraction(text); err != nil {

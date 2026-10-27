@@ -95,6 +95,10 @@ func (m Model) prTab(d *drawer, r row, links []deck.Link) {
 	switch {
 	case pr.Live && len(pr.Checks) > 0:
 		d.flow(m.checksGroup(d, pr))
+	case r.pull != nil && r.pull.CIState() != deck.CINone:
+		// The GitHub views' list has the checks taken together only.
+		g, text, st := ciState(*r.pull)
+		d.flow(group{sep: " ", items: []item{span(g+" checks "+text, st), span("· reading them…", dim)}})
 	case pr.Live && pr.State == "OPEN":
 		d.flow(words("no checks", dim))
 	case len(pr.FailingChecks) > 0:

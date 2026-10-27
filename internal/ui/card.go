@@ -27,6 +27,12 @@ func (m Model) rowDrawer(r row, links []deck.Link, width, inner, h int) *drawer 
 	d := newDrawer(inner, "")
 	d.light = m.light
 	d.card = m.card(r, width)
+	if r.issue != nil {
+		d.card = m.issueCard(r, width)
+	}
+	if r.pull != nil {
+		d.card = m.pullCard(r, width)
+	}
 	tab := m.curTab()
 	if m.dfocus {
 		d.cur = m.dcur
@@ -44,7 +50,11 @@ func (m Model) rowDrawer(r row, links []deck.Link, width, inner, h int) *drawer 
 	case tabLog:
 		m.logTab(d, t, links)
 	default:
-		m.overview(d, r, links, h)
+		if r.issue != nil {
+			m.issueOverview(d, r, links)
+		} else {
+			m.overview(d, r, links, h)
+		}
 	}
 	off := clamp(m.drawerOff, 0, max(len(d.lines)-h, 0))
 	d.tabs, d.tabZones = m.tabBar(r, hasThread, tab, d.moreHint(tab, off, h), width)
@@ -111,10 +121,13 @@ func (m Model) tabBar(r row, hasThread bool, active tabKind, hint string, width 
 		enabled := m.tabEnabled(r, tab)
 		// PR shows only for a row with a PR, and Impact only while
 		// it is on (arch.enabled); the others show dim.
-		if tab == tabPR && !enabled || tab == tabImpact && m.opt.Arch == nil {
+		if tab == tabPR && !enabled || tab == tabImpact && m.opt.Arch == nil || r.issue != nil && tab != tabOverview || r.pull != nil && tab != tabPR {
 			continue
 		}
 		label := tab.String()
+		if r.issue != nil {
+			label = "Linear"
+		}
 		if enabled {
 			switch tab {
 			case tabFiles:
@@ -160,6 +173,12 @@ func (m Model) tabBar(r row, hasThread bool, active tabKind, hint string, width 
 // worktree that is not resolved, Commits and Log a thread (Commits says
 // why a resolved one or one without a worktree shows none).
 func (m Model) tabEnabled(r row, tab tabKind) bool {
+	if r.issue != nil {
+		return tab == tabOverview
+	}
+	if r.pull != nil {
+		return tab == tabPR
+	}
 	switch tab {
 	case tabFiles:
 		_, ok := m.diffThread()
@@ -184,6 +203,9 @@ func (m Model) tabEnabled(r row, tab tabKind) bool {
 // the row has nothing behind it.
 func (m Model) curTab() tabKind {
 	r, ok := m.selected()
+	if ok && r.kind == rowWork && r.pull != nil {
+		return tabPR // a PR row has its PR tab only
+	}
 	if !ok || r.kind != rowWork || !m.tabEnabled(r, m.tab) {
 		return tabOverview
 	}
@@ -199,6 +221,8 @@ func (m Model) card(r row, w int) []string {
 	t, hasThread := r.thread()
 	pill, pst := "○ no thread", dim
 	switch {
+	case hasThread && t.Board != nil:
+		pill, pst = boardPill(t.Board)
 	case hasThread:
 		pill, pst = statusPill(t)
 	case r.task != nil && r.task.Done:
@@ -229,7 +253,7 @@ func (m Model) card(r row, w int) []string {
 		case t.PR != nil:
 			bar = prBrief(*t.PR, narrow)
 		}
-	case r.task != nil:
+	case r.task != nil && m.snap.Project.Slug != boardSlug:
 		parts = append(parts, r.list, "TASKS.md")
 	}
 	if pr, own, ok := r.pr(); ok && !own && bar == "" {
@@ -242,6 +266,9 @@ func (m Model) card(r row, w int) []string {
 		bar += " "
 	}
 	// The activity goes last, and only whole: the repo and branch matter more.
+	if hasThread && t.Board != nil && t.Board.Priority > 0 {
+		parts = append([]string{fmt.Sprintf("P%d %s", t.Board.Priority, prioName(t.Board.Priority))}, parts...)
+	}
 	if hasThread && t.Status == deck.StatusWorking && t.Activity != "" {
 		with := append(slices.Clone(parts), t.Activity)
 		if 1+ansi.StringWidth(strings.Join(with, " · "))+1+ansi.StringWidth(bar) <= w {
@@ -381,7 +408,7 @@ func (m Model) reportDrawer(r row, width int) *drawer {
 	d := newDrawer(width, "")
 	d.card = m.card(r, width)
 	d.light = m.light
-	d.tabs = fit(" "+bold.Render("Report")+dim.Render(" · threads/"+t.ID+".md · esc returns"), width)
+	d.tabs = fit(" "+bold.Render("Report")+dim.Render(" · "+reportName(t)+" · esc returns"), width)
 	d.markdown(t.Report)
 	return d
 }
